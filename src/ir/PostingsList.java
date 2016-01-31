@@ -8,18 +8,16 @@
 
 package ir;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.ListIterator;
+
 import java.io.Serializable;
 
 /**
  *   A list of postings for a given word.
  */
-public class PostingsList implements Serializable, Iterable<PostingsEntry> {
+public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     
     /** The postings list as a linked list. */
     private LinkedList<PostingsEntry> list = new LinkedList<PostingsEntry>();
@@ -61,7 +59,6 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry> {
 	public Iterator<PostingsEntry> iterator() {
 		return list.iterator();
 	}
-
 }
 	
 

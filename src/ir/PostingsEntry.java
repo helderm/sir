@@ -11,6 +11,13 @@ package ir;
 import java.io.Serializable;
 import java.util.ArrayList;
 
+import org.bson.BsonReader;
+import org.bson.BsonType;
+import org.bson.BsonWriter;
+import org.bson.codecs.Codec;
+import org.bson.codecs.DecoderContext;
+import org.bson.codecs.EncoderContext;
+
 public class PostingsEntry implements Comparable<PostingsEntry>, Serializable {
     
     public int docID;
@@ -29,12 +36,6 @@ public class PostingsEntry implements Comparable<PostingsEntry>, Serializable {
     	//return Integer.compare(this.docID, other.docID);
     	return Double.compare( other.score, score );
     }
-
-    
-    
-    //
-    //  YOUR CODE HERE
-    //
 
 }
 

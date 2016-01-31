@@ -32,8 +32,8 @@ public interface Index {
     public static final int BIGRAM = 1; 
     public static final int SUBPHRASE = 2; 
 	
-    //public HashMap<String, String> docIDs = new HashMap<String,String>();
-    //public HashMap<String,Integer> docLengths = new HashMap<String,Integer>();
+    public HashMap<String, String> docIDs = new HashMap<String,String>();
+    public HashMap<String,Integer> docLengths = new HashMap<String,Integer>();
    
     public void insert( String token, int docID, int offset );
     public Iterator<String> getDictionary();
@@ -41,10 +41,11 @@ public interface Index {
     public PostingsList search( Query query, int queryType, int rankingType, int structureType );
     public void cleanup();
     
-    public HashMap<String, String> getDocIDs();
-    public void addDocID(String docID, String filepath);
-    public HashMap<String, Integer> getDocLenghts();
-    public void addDocLenght(String docID, Integer lenght);
+    public HashMap<String, String>getDocsInfo(PostingsList pl);
+    //public HashMap<String, String> getDocIDs();
+    //public void addDocID(String docID, String filepath);
+    //public HashMap<String, Integer> getDocLenghts();
+    //public void addDocLenght(String docID, Integer lenght);
 
 }
 		    

@@ -13,18 +13,23 @@ import java.io.File;
 import java.io.Reader;
 import java.io.FileReader;
 import java.io.StringReader;
-import java.io.BufferedReader;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.Map;
+
 import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.pdfparser.*;
 import org.apache.pdfbox.util.PDFTextStripper;
+import org.bson.Document;
+import org.bson.codecs.configuration.CodecRegistries;
+import org.bson.codecs.configuration.CodecRegistry;
+
+import com.mongodb.MongoClient;
+import com.mongodb.MongoClientOptions;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+
 import org.apache.pdfbox.pdmodel.PDDocument;
 
 
@@ -38,6 +43,12 @@ public class Indexer {
     
     /** The next docID to be generated. */
     private int lastDocID = 0;
+
+	private MongoClient client;
+
+	private MongoDatabase db;
+
+	private Options opt;
 
 
     /* ----------------------------------------------- */
@@ -59,38 +70,38 @@ public class Indexer {
 
     /**
      *  Initializes the index as a HashedIndex.
+     * @param opt 
      */
-    public Indexer() {
-	//index = new HashedIndex();
+    public Indexer(Options opt) {
+    	PostingsListCodec plc = new PostingsListCodec();
+    	PostingsEntryCodec pec = new PostingsEntryCodec();
+    	IndexEntryCodec iec = new IndexEntryCodec();
+		
+		CodecRegistry codecRegistry = CodecRegistries.fromRegistries(
+				MongoClient.getDefaultCodecRegistry(), CodecRegistries.fromCodecs(plc), 
+				CodecRegistries.fromCodecs(pec), CodecRegistries.fromCodecs(iec));
+		
+		MongoClientOptions options = MongoClientOptions.builder().codecRegistry(codecRegistry)
+		        .build();
+		
+    	this.client = new MongoClient("localhost:27017", options);
+    	this.db = client.getDatabase("sir");	
+    	this.opt = opt;
+    	this.index = new HashedIndex(this.db, this.opt);
     }
 
 
     /* ----------------------------------------------- */
 
-    public void buildIndex(File f){
-        try{
-	    	FileInputStream fis = new FileInputStream("data/hashedindex.ser");
-	        ObjectInputStream ois = new ObjectInputStream(fis);
-	        this.index = (Index) ois.readObject();
-	        ois.close();
-	        fis.close();
-
-        }catch(Exception e){
-        	// couldnt load the index, rebuild it
-        	this.index = new HashedIndex();
-        	processFiles(f);
-        	
-        	// try to serialize the index
-        	try {
-                FileOutputStream fos = new FileOutputStream("data/hashedindex.ser");
-                ObjectOutputStream oos = new ObjectOutputStream(fos);
-                oos.writeObject(this.index);
-                oos.close();
-                fos.close();
-        	}catch(Exception ex){
-        		System.err.println("Failed to serialize the index!");
-        	}
-        }
+    public void buildIndex(File f){    	
+    	Options opt = new Options();
+    	opt.cacheSize = -1;
+    	this.index = new HashedIndex(this.db, opt);   	
+    	
+    	processFiles(f);
+    	exportIndexToDB();  
+    	
+    	this.index = new HashedIndex(this.db, this.opt);
     }
     
 
@@ -113,13 +124,9 @@ public class Indexer {
 		//System.err.println( "Indexing " + f.getPath() );
 		// First register the document and get a docID
 		int docID = generateDocID();
-		
-		// DEBUG - remove this!
-		//if(docID > 100)
-		//	return;
-		
-		//index.docIDs.put( "" + docID, f.getPath() );
-		index.addDocID( "" + docID, f.getPath() );
+
+		index.docIDs.put( "" + docID, f.getPath() );
+		//index.addDocID( "" + docID, f.getPath() );
 		try {
 		    //  Read the first few bytes of the file to see if it is 
 		    // likely to be a PDF 
@@ -147,8 +154,8 @@ public class Indexer {
 			String token = tok.nextToken();
 			insertIntoIndex( docID, token, offset++ );
 		    }
-		    //index.docLengths.put( "" + docID, offset );
-		    index.addDocLenght( "" + docID, offset );
+		    index.docLengths.put( "" + docID, offset );
+		    //index.addDocLenght( "" + docID, offset );
 		    reader.close();
 		}
 		catch ( IOException e ) {
@@ -186,6 +193,42 @@ public class Indexer {
      */
     public void insertIntoIndex( int docID, String token, int offset ) {
 	index.insert( token, docID, offset );
+    }
+    
+    public void exportIndexToDB(){
+    	
+    	// clean the db
+    	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
+    	MongoCollection<Document> docCol = this.db.getCollection("docs");
+    	idxCol.drop();
+    	docCol.drop();
+    	idxCol.createIndex(new Document("token", 1));
+    	docCol.createIndex(new Document("did", 1));
+    	
+    	// export index entries
+    	for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
+    		IndexEntry ie = new IndexEntry();
+	    	ie.token = map.getKey();
+	    	ie.postings = map.getValue();
+	    	//Document doc = new Document("token", new BsonString(token))
+	    	//				.append("postings", postings);
+	    	idxCol.insertOne(ie);
+    	}
+    	
+    	// export doc names and lenghts
+    	HashMap<String, String> docIDs = this.index.docIDs;
+    	HashMap<String, Integer> docLenghts = this.index.docLengths;
+    	
+    	for(Map.Entry<String, String> map : docIDs.entrySet()){
+    		String docID = map.getKey();
+    		String docName = map.getValue();
+    		Integer docLenght = docLenghts.get(docID);
+    		
+    		Document doc = new Document("did", docID)
+    							.append("name", docName)
+    							.append("lenght", docLenght);
+    		docCol.insertOne(doc);
+    	}
     }
 }
 	

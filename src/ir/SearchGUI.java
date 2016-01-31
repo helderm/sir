@@ -10,15 +10,11 @@
 package ir;
 
 import java.io.File;
-import java.io.IOException;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.StringTokenizer;
 import java.awt.*;
 import java.awt.event.*;
 import javax.swing.*;
-import javax.swing.event.*;
 
 
 /**
@@ -27,7 +23,7 @@ import javax.swing.event.*;
 public class SearchGUI extends JFrame {
 
     /**  The indexer creating the search index. */
-    Indexer indexer = new Indexer();
+    Indexer indexer;
 
     /**  The query posed by the user, used in search() and relevanceFeedbackSearch() */
     private Query query; 
@@ -94,7 +90,9 @@ public class SearchGUI extends JFrame {
     ButtonGroup structure = new ButtonGroup(); 
     public JPanel feedbackBar = new JPanel(); 
     JCheckBox[] feedbackButton = new JCheckBox[10];
-    JToggleButton feedbackExecutor = new JToggleButton("New search"); 
+    JToggleButton feedbackExecutor = new JToggleButton("New search");
+
+	private Options opt; 
 
 
     /* ----------------------------------------------- */
@@ -177,12 +175,15 @@ public class SearchGUI extends JFrame {
 			results = indexer.index.search( query, queryType, rankingType, structureType ); 
 		    }
 		    StringBuffer buf = new StringBuffer();
+		    
+		    HashMap<String, String> docsInfo = indexer.index.getDocsInfo(results);
+		    
 		    if ( results != null ) {
 			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );
 			for ( int i=0; i<results.size(); i++ ) {
 			    buf.append( " " + i + ". " );
 			    //String filename = indexer.index.docIDs.get( "" + results.get(i).docID );
-			    String filename = indexer.index.getDocIDs().get( "" + results.get(i).docID );
+			    String filename = docsInfo.get( "" + results.get(i).docID );
 			    if ( filename == null ) {
 				buf.append( "" + results.get(i).docID );
 			    }
@@ -228,10 +229,12 @@ public class SearchGUI extends JFrame {
 			}
 			buf.append( "\nSearch after relevance feedback:\n" );
 			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );
+			
+			HashMap<String, String> docsInfo = indexer.index.getDocsInfo(results);
 			for ( int i=0; i<results.size(); i++ ) {
 			    buf.append( " " + i + ". " );
 			    //String filename = indexer.index.docIDs.get( "" + results.get(i).docID );
-			    String filename = indexer.index.getDocIDs().get( "" + results.get(i).docID );
+			    String filename = docsInfo.get( "" + results.get(i).docID );
 			    if ( filename == null ) {
 				buf.append( "" + results.get(i).docID );
 			    }
@@ -344,11 +347,14 @@ public class SearchGUI extends JFrame {
      */
     private void index() {
 	synchronized ( indexLock ) {
-	    resultWindow.setText( "\n  Indexing, please wait..." );
-	    for ( int i=0; i<dirNames.size(); i++ ) {
-		File dokDir = new File( dirNames.get( i ));
-		//indexer.processFiles( dokDir );
-		indexer.buildIndex(dokDir);
+	    
+		if(this.opt.recreateDB){
+			resultWindow.setText( "\n  Indexing, please wait..." );
+		    for ( int i=0; i<dirNames.size(); i++ ) {
+				File dokDir = new File( dirNames.get( i ));
+				//indexer.processFiles( dokDir );
+				indexer.buildIndex(dokDir);
+		    }
 	    }
 	    resultWindow.setText( "\n  Done!" );
 	}
@@ -362,19 +368,30 @@ public class SearchGUI extends JFrame {
      *   Decodes the command line arguments.
      */
     private void decodeArgs( String[] args ) {
-	int i=0, j=0;
-	while ( i < args.length ) {
-	    if ( "-d".equals( args[i] )) {
-		i++;
-		if ( i < args.length ) {
-		    dirNames.add( args[i++] );
+		int i=0, j=0;
+		
+		this.opt = new Options();
+		while ( i < args.length ){
+			switch(args[i]){
+			case "-d":
+				i++;
+				if ( i < args.length ) {
+				    dirNames.add( args[i++] );
+				}
+				break;
+			case "-i":
+				i++;
+				if ( i < args.length ) {
+					this.opt.cacheSize = Integer.parseInt(args[i++]);
+				}
+				break;
+			case "-f":
+				i++;
+				this.opt.recreateDB = true;
+				break;
+			}
 		}
-	    }
-	    else {
-		System.err.println( "Unknown option: " + args[i] );
-		break;
-	    }
-	}
+		
     }				    
 
 
@@ -385,6 +402,7 @@ public class SearchGUI extends JFrame {
 	SearchGUI s = new SearchGUI();
 	s.createGUI();
 	s.decodeArgs( args );
+	s.indexer = new Indexer(s.opt);
 	s.index();
     }
 

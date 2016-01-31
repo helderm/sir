@@ -10,44 +10,44 @@
 
 package ir;
 
-import java.io.FileInputStream;
-import java.io.ObjectInputStream;
-import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.ListIterator;
+import java.util.Map;
 
-import ir.Query.TermPostings;
+import org.bson.Document;
 
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import static com.mongodb.client.model.Filters.*;
 
 /**
  *   Implements an inverted index as a Hashtable from words to PostingsLists.
  */
-public class HashedIndex implements Index, Serializable {
+public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsList>>{
 
-	/** The index as a hashtable. */
-    private HashMap<String,PostingsList> index;
+    private LruCache<String,PostingsList> cache;
     
-    // copied from the interface declaration, to serialize it too
-    private HashMap<String, String> docIDs = new HashMap<String,String>();
-    private HashMap<String,Integer> docLengths = new HashMap<String,Integer>(); 
-    
-	private static final long serialVersionUID = 2L;
+    private MongoDatabase db;
 
-    public HashedIndex() {
-    	this.index = new HashMap<String,PostingsList>();
+    public HashedIndex(MongoDatabase db, Options opt) {
+    	if(opt.cacheSize >= 0)
+    		this.cache = new LruCache<String,PostingsList>(opt.cacheSize);
+    	else
+    		this.cache = new LruCache<String,PostingsList>();
+
+    	this.db = db;		
 	}
 
     /**
      *  Inserts this token in the index.
      */
     public void insert( String token, int docID, int offset ) {
-    	PostingsList postings = this.index.get(token);
-  	
+	
+		// first search the postings list in the cache
+    	PostingsList postings = this.cache.get(token);
+      	
 		PostingsEntry posting = new PostingsEntry();
 		posting.docID = docID;
 		posting.score = 1;
@@ -59,9 +59,8 @@ public class HashedIndex implements Index, Serializable {
 	    	// new token being added into the index
 			postings = new PostingsList();        	
 			postings.add(posting);		
-	    	this.index.put(token, postings);
-    	}
-   	
+	    	this.cache.put(token, postings);
+    	}		
     }
 
 
@@ -81,7 +80,26 @@ public class HashedIndex implements Index, Serializable {
      *  if the term is not in the index.
      */
     public PostingsList getPostings( String token ) {
-    	return this.index.get(token);
+    	PostingsList pl = this.cache.get(token);
+    	
+    	if(pl != null)
+    		return pl;
+    	
+    	// try to fetch from db
+		try{
+    		MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
+    		IndexEntry ie = col.find(eq("token", token)).first();
+    		if(ie == null)
+    			return new PostingsList();
+    		
+    		pl = ie.postings;
+    		this.cache.put(token, pl);
+		}catch(Exception e){
+    		System.err.println("Error while fetching token postings from db!");
+     		System.err.println(e);
+    	}    	
+    	
+    	return pl;
     }
 
 
@@ -160,8 +178,7 @@ public class HashedIndex implements Index, Serializable {
 		PostingsEntry pe2 = (PostingsEntry) it2.next();    	
     	
 		while(true){
-    		if(pe1.docID == pe2.docID){
-    			
+    		if(pe1.docID == pe2.docID){    			
     	    	Iterator pp1 = pe1.positions.iterator();
     			ArrayList<Integer> l = new ArrayList<Integer>();
     			
@@ -210,32 +227,26 @@ public class HashedIndex implements Index, Serializable {
     }
     
 
-    /**
-     *  No need for cleanup in a HashedIndex.
-     */
     public void cleanup() {
     }
 
 	@Override
-	public HashMap<String, String> getDocIDs() {
-		// TODO Auto-generated method stub
-		return this.docIDs;
+	public Iterator<Map.Entry<String, PostingsList>> iterator() {
+		return this.cache.entrySet().iterator();
 	}
-
-	@Override
-	public void addDocID(String docID, String filepath) {
-		this.docIDs.put( docID, filepath );		
-	}
-
-	@Override
-	public HashMap<String, Integer> getDocLenghts() {
-		// TODO Auto-generated method stub
-		return this.docLengths;
-	}
-
-	@Override
-	public void addDocLenght(String docID, Integer lenght) {
-		// TODO Auto-generated method stub
-		this.docLengths.put(docID, lenght);
+	
+	public HashMap<String, String> getDocsInfo(PostingsList pl){
+		HashMap<String, String> docsInfo = new HashMap<>();
+		
+		MongoCollection<Document> col = this.db.getCollection("docs");
+		for(PostingsEntry pe : pl ){
+			Document doc = col.find(eq("did", Integer.toString(pe.docID))).first();
+			if(doc == null)
+				continue;
+			
+			docsInfo.put(doc.getString("did"), doc.getString("name"));
+		}
+		
+		return docsInfo;
 	}
 }
