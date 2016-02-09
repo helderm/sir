@@ -389,6 +389,9 @@ public class SearchGUI extends JFrame {
 				i++;
 				this.opt.recreateDB = true;
 				break;
+			case "-m":
+				i++;
+				this.opt.memoryOnly = true;
 			}
 		}
 		

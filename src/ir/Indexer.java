@@ -101,7 +101,8 @@ public class Indexer {
     	processFiles(f);
     	exportIndexToDB();  
     	
-    	this.index = new HashedIndex(this.db, this.opt);
+    	if(this.opt.memoryOnly == false)
+    		this.index = new HashedIndex(this.db, this.opt);
     }
     
 
@@ -206,13 +207,15 @@ public class Indexer {
     	docCol.createIndex(new Document("did", 1));
     	
     	// export index entries
-    	for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
-    		IndexEntry ie = new IndexEntry();
-	    	ie.token = map.getKey();
-	    	ie.postings = map.getValue();
-	    	//Document doc = new Document("token", new BsonString(token))
-	    	//				.append("postings", postings);
-	    	idxCol.insertOne(ie);
+    	if(this.opt.memoryOnly == false){
+	    	for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
+	    		IndexEntry ie = new IndexEntry();
+		    	ie.token = map.getKey();
+		    	ie.postings = map.getValue();
+		    	//Document doc = new Document("token", new BsonString(token))
+		    	//				.append("postings", postings);
+		    	idxCol.insertOne(ie);
+	    	}
     	}
     	
     	// export doc names and lenghts

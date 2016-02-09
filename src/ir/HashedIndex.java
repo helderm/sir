@@ -37,7 +37,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	else
     		this.cache = new LruCache<String,PostingsList>();
 
-    	this.db = db;		
+    	this.db = opt.memoryOnly? null:db;		
 	}
 
     /**
@@ -84,6 +84,9 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	
     	if(pl != null)
     		return pl;
+    	
+    	if(this.db == null)
+    		return new PostingsList();
     	
     	// try to fetch from db
 		try{
