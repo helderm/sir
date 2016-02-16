@@ -201,13 +201,14 @@ public class Indexer {
     	// clean the db
     	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
     	MongoCollection<Document> docCol = this.db.getCollection("docs");
-    	idxCol.drop();
-    	docCol.drop();
-    	idxCol.createIndex(new Document("token", 1));
-    	docCol.createIndex(new Document("did", 1));
     	
     	// export index entries
     	if(this.opt.memoryOnly == false){
+        	idxCol.drop();
+        	docCol.drop();
+        	idxCol.createIndex(new Document("token", 1));
+        	docCol.createIndex(new Document("did", 1)); 		
+   
 	    	for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
 	    		IndexEntry ie = new IndexEntry();
 		    	ie.token = map.getKey();

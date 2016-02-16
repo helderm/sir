@@ -202,8 +202,24 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 						l.remove(0);
 					
 					if(l.isEmpty() == false){
-						answer.add(pe1);
-						break;
+						Boolean found = false;
+						for(PostingsEntry aux : answer){
+							if(aux.docID == pe2.docID){
+								found = true;
+								aux.positions.add(l.get(0));
+							}
+						}
+						if(found == false){
+							PostingsEntry newPe = new PostingsEntry();
+							newPe.positions.add(l.get(0));
+							newPe.docID = pe2.docID;
+							newPe.score = pe2.score;
+							answer.add(newPe);							
+						}
+						
+
+						//answer.add(pe1);
+						//break;
 					}
     			}
         		
