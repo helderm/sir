@@ -101,8 +101,7 @@ public class Indexer {
     	processFiles(f);
     	exportIndexToDB();  
     	
-    	if(this.opt.memoryOnly == false)
-    		this.index = new HashedIndex(this.db, this.opt);
+   		this.index = new HashedIndex(this.db, this.opt);
     }
     
 
@@ -196,28 +195,31 @@ public class Indexer {
 	index.insert( token, docID, offset );
     }
     
-    public void exportIndexToDB(){
+    public void recreateDB(){
     	
-    	// clean the db
     	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
     	MongoCollection<Document> docCol = this.db.getCollection("docs");
     	
-    	// export index entries
-    	if(this.opt.memoryOnly == false){
-        	idxCol.drop();
-        	docCol.drop();
-        	idxCol.createIndex(new Document("token", 1));
-        	docCol.createIndex(new Document("did", 1)); 		
+    	// clean the db
+    	idxCol.drop();
+    	docCol.drop();
+    	
+    	// create indexes
+    	idxCol.createIndex(new Document("token", 1));
+    	docCol.createIndex(new Document("did", 1));    	
+    }
+    
+    public void exportIndexToDB(){
+    	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
+    	MongoCollection<Document> docCol = this.db.getCollection("docs");
+		
    
-	    	for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
-	    		IndexEntry ie = new IndexEntry();
-		    	ie.token = map.getKey();
-		    	ie.postings = map.getValue();
-		    	//Document doc = new Document("token", new BsonString(token))
-		    	//				.append("postings", postings);
-		    	idxCol.insertOne(ie);
-	    	}
-    	}
+	    for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
+	    	IndexEntry ie = new IndexEntry();
+		   	ie.token = map.getKey();
+		   	ie.postings = map.getValue();
+	    	idxCol.insertOne(ie);
+    	}    	
     	
     	// export doc names and lenghts
     	HashMap<String, String> docIDs = this.index.docIDs;

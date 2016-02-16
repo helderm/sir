@@ -37,7 +37,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	else
     		this.cache = new LruCache<String,PostingsList>();
 
-    	this.db = opt.memoryOnly? null:db;		
+    	this.db = db;		
 	}
 
     /**
@@ -100,6 +100,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 		}catch(Exception e){
     		System.err.println("Error while fetching token postings from db!");
      		System.err.println(e);
+     		return new PostingsList();
     	}    	
     	
     	return pl;

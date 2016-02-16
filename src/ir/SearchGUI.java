@@ -348,11 +348,13 @@ public class SearchGUI extends JFrame {
     private void index() {
 	synchronized ( indexLock ) {
 	    
-		if(this.opt.recreateDB){
+		if(this.opt.recreateIndex){			
 			resultWindow.setText( "\n  Indexing, please wait..." );
+			
+			indexer.recreateDB();
+			
 		    for ( int i=0; i<dirNames.size(); i++ ) {
 				File dokDir = new File( dirNames.get( i ));
-				//indexer.processFiles( dokDir );
 				indexer.buildIndex(dokDir);
 		    }
 	    }
@@ -387,11 +389,8 @@ public class SearchGUI extends JFrame {
 				break;
 			case "-f":
 				i++;
-				this.opt.recreateDB = true;
+				this.opt.recreateIndex = true;
 				break;
-			case "-m":
-				i++;
-				this.opt.memoryOnly = true;
 			}
 		}
 		
