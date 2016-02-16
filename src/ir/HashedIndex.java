@@ -31,13 +31,19 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     
     private MongoDatabase db;
 
-    public HashedIndex(MongoDatabase db, Options opt) {
-    	if(opt.cacheSize >= 0)
-    		this.cache = new LruCache<String,PostingsList>(opt.cacheSize);
-    	else
-    		this.cache = new LruCache<String,PostingsList>();
+	private boolean flushCache;
+	private Integer cacheSize;
 
-    	this.db = db;		
+    public HashedIndex(MongoDatabase db, Options opt) {
+    	if(opt.cacheSize >= 0){    		
+    		this.cacheSize = opt.cacheSize;
+    	}else
+    		this.cacheSize = LruCache.INFINITY;
+
+    	this.cache = new LruCache<String,PostingsList>(this.cacheSize);
+    	this.db = db;
+    	
+   		this.flushCache = opt.recreateIndex;
 	}
 
     /**
@@ -60,10 +66,38 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 			postings = new PostingsList();        	
 			postings.add(posting);		
 	    	this.cache.put(token, postings);
+	    	
+	    	if(this.flushCache == true && this.cache.size() >= this.cacheSize){	
+	       
+	    		// flush cache to db
+	    	    for(Map.Entry<String, PostingsList> map : this){
+	    	    	save(map.getKey(), map.getValue());
+	        	}   
+	    		
+	    		// clean the cache
+	    		this.cache = new LruCache<String,PostingsList>(this.cacheSize);	    		
+	    	}
     	}		
     }
 
+    public void save(String token, PostingsList postings){
 
+    	MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
+    	
+		IndexEntry ie = col.find(eq("token", token)).first();
+		if(ie != null){
+			ie.postings.add(postings);
+			col.findOneAndReplace(eq("token", token), ie);
+			return;
+		}
+    	
+    	ie = new IndexEntry();
+	   	ie.token = token;
+	   	ie.postings = postings;
+    	col.insertOne(ie);
+    }
+    
+    
     /**
      *  Returns all the words in the index.
      */

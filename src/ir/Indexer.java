@@ -94,14 +94,11 @@ public class Indexer {
     /* ----------------------------------------------- */
 
     public void buildIndex(File f){    	
-    	Options opt = new Options();
-    	opt.cacheSize = -1;
-    	this.index = new HashedIndex(this.db, opt);   	
-    	
     	processFiles(f);
-    	exportIndexToDB();  
-    	
-   		this.index = new HashedIndex(this.db, this.opt);
+    	exportIndexToDB();
+    	Options opt = this.opt;
+    	opt.recreateIndex = false;
+    	this.index = new HashedIndex(this.db, opt);
     }
     
 
@@ -192,7 +189,7 @@ public class Indexer {
      *  Indexes one token.
      */
     public void insertIntoIndex( int docID, String token, int offset ) {
-	index.insert( token, docID, offset );
+    	index.insert( token, docID, offset );
     }
     
     public void recreateDB(){
@@ -211,14 +208,10 @@ public class Indexer {
     
     public void exportIndexToDB(){
     	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
-    	MongoCollection<Document> docCol = this.db.getCollection("docs");
-		
+    	MongoCollection<Document> docCol = this.db.getCollection("docs");		
    
 	    for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
-	    	IndexEntry ie = new IndexEntry();
-		   	ie.token = map.getKey();
-		   	ie.postings = map.getValue();
-	    	idxCol.insertOne(ie);
+	    	((HashedIndex)this.index).save(map.getKey(), map.getValue());
     	}    	
     	
     	// export doc names and lenghts

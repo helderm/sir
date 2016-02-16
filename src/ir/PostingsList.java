@@ -52,9 +52,15 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     	
     	// add new posting to the list
     	this.list.add(posting);
-    	//Collections.sort(this.list);
     }
 
+    public void add(PostingsList postings){
+    	
+    	for(PostingsEntry posting : postings){
+    		this.add(posting);
+    	}
+    }
+    
 	@Override
 	public Iterator<PostingsEntry> iterator() {
 		return list.iterator();
