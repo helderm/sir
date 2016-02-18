@@ -85,7 +85,7 @@ public class Indexer {
 		        .build();
 		
     	this.client = new MongoClient("localhost:27017", options);
-    	this.db = client.getDatabase("sir");	
+    	this.db = client.getDatabase("findr");	
     	this.opt = opt;
     	this.index = new HashedIndex(this.db, this.opt);
     }
@@ -202,7 +202,7 @@ public class Indexer {
     	docCol.drop();
     	
     	// create indexes
-    	idxCol.createIndex(new Document("token", 1));
+    	idxCol.createIndex(new Document("term", 1));
     	docCol.createIndex(new Document("did", 1));    	
     }
     

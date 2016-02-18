@@ -14,9 +14,9 @@ public class PostingsEntryCodec implements Codec<PostingsEntry> {
 	@Override
 	public void encode(BsonWriter writer, PostingsEntry pe, EncoderContext ctx) {
 		writer.writeStartDocument();
-		writer.writeInt32("docID", pe.docID);
-		writer.writeDouble("score", pe.score);
-		writer.writeStartArray("positions");			
+		writer.writeInt32("d", pe.docID);
+		writer.writeDouble("s", pe.score);
+		writer.writeStartArray("p");			
 		
 		for(Integer pos : pe.positions)
 			writer.writeInt32(pos);
@@ -35,8 +35,8 @@ public class PostingsEntryCodec implements Codec<PostingsEntry> {
 		PostingsEntry pe = new PostingsEntry();
 		
 		reader.readStartDocument();
-		pe.docID = reader.readInt32("docID");
-		pe.score = reader.readDouble("score");
+		pe.docID = reader.readInt32("d");
+		pe.score = reader.readDouble("s");
 		pe.positions = new ArrayList<Integer>();
 		
 		reader.readStartArray();

@@ -84,14 +84,14 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 
     	MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
     	
-		IndexEntry ie = col.find(eq("token", token)).first();
+    	IndexEntry ie = col.find(eq("term", token)).first();
 		if(ie != null){
 			ie.postings.add(postings);
-			col.findOneAndReplace(eq("token", token), ie);
+			col.findOneAndReplace(eq("term", token), ie);
 			return;
 		}
     	
-    	ie = new IndexEntry();
+		ie = new IndexEntry();
 	   	ie.token = token;
 	   	ie.postings = postings;
     	col.insertOne(ie);
@@ -125,7 +125,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	// try to fetch from db
 		try{
     		MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
-    		IndexEntry ie = col.find(eq("token", token)).first();
+    		IndexEntry ie = col.find(eq("term", token)).first();
     		if(ie == null)
     			return new PostingsList();
     		

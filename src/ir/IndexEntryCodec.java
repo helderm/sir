@@ -11,9 +11,9 @@ public class IndexEntryCodec implements Codec<IndexEntry> {
 	@Override
 	public void encode(BsonWriter writer, IndexEntry ie, EncoderContext ctx) {
 		writer.writeStartDocument();
-		writer.writeString("token", ie.token);
+		writer.writeString("term", ie.token);
 		
-		writer.writeName("postings");		
+		writer.writeName("posts");		
 		PostingsListCodec codec = new PostingsListCodec();
 		codec.encode(writer, ie.postings, ctx);
 		
@@ -32,7 +32,7 @@ public class IndexEntryCodec implements Codec<IndexEntry> {
 		reader.readStartDocument();
 		
 		ie.id = reader.readObjectId("_id");
-		ie.token = reader.readString("token");
+		ie.token = reader.readString("term");
 		PostingsListCodec codec = new PostingsListCodec();
 		ie.postings = codec.decode(reader, ctx);
 		reader.readEndDocument();
