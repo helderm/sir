@@ -41,11 +41,5 @@ public interface Index {
     public PostingsList search( Query query, int queryType, int rankingType, int structureType );
     public void cleanup();
     
-    public HashMap<String, String>getDocsInfo(PostingsList pl);
-    //public HashMap<String, String> getDocIDs();
-    //public void addDocID(String docID, String filepath);
-    //public HashMap<String, Integer> getDocLenghts();
-    //public void addDocLenght(String docID, Integer lenght);
-
 }
 		    

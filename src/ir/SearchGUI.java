@@ -176,7 +176,7 @@ public class SearchGUI extends JFrame {
 		    }
 		    StringBuffer buf = new StringBuffer();
 		    
-		    HashMap<String, String> docsInfo = indexer.index.getDocsInfo(results);
+		    HashMap<String, String> docsInfo = indexer.getDocumentsNames(results);
 		    
 		    if ( results != null ) {
 			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );
@@ -230,7 +230,7 @@ public class SearchGUI extends JFrame {
 			buf.append( "\nSearch after relevance feedback:\n" );
 			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );
 			
-			HashMap<String, String> docsInfo = indexer.index.getDocsInfo(results);
+			HashMap<String, String> docsInfo = indexer.getDocumentsNames(results);
 			for ( int i=0; i<results.size(); i++ ) {
 			    buf.append( " " + i + ". " );
 			    //String filename = indexer.index.docIDs.get( "" + results.get(i).docID );

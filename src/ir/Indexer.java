@@ -9,6 +9,8 @@
 
 package ir;
 
+import static com.mongodb.client.model.Filters.eq;
+
 import java.io.File;
 import java.io.Reader;
 import java.io.FileReader;
@@ -28,6 +30,7 @@ import org.bson.codecs.configuration.CodecRegistry;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientOptions;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -76,10 +79,12 @@ public class Indexer {
     	PostingsListCodec plc = new PostingsListCodec();
     	PostingsEntryCodec pec = new PostingsEntryCodec();
     	IndexEntryCodec iec = new IndexEntryCodec();
+    	CorpusDocumentCodec doe = new CorpusDocumentCodec();
 		
 		CodecRegistry codecRegistry = CodecRegistries.fromRegistries(
 				MongoClient.getDefaultCodecRegistry(), CodecRegistries.fromCodecs(plc), 
-				CodecRegistries.fromCodecs(pec), CodecRegistries.fromCodecs(iec));
+				CodecRegistries.fromCodecs(pec), CodecRegistries.fromCodecs(iec),
+				CodecRegistries.fromCodecs(doe));
 		
 		MongoClientOptions options = MongoClientOptions.builder().codecRegistry(codecRegistry)
 		        .build();
@@ -94,15 +99,50 @@ public class Indexer {
     /* ----------------------------------------------- */
 
     public void buildIndex(File f){    	
+    	
+    	// parse the files and build the index
     	processFiles(f);
-    	exportIndexToDB();
+    	
+    	// export the remaining index entries and docs info
+	    for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
+	    	((HashedIndex)this.index).savePostings(map.getKey(), map.getValue());
+    	}    
+	    
+    	saveDocuments();
+    	
+    	// calculate the tf-idf scores of every term-document pair
+    	if(this.opt.offlineTfIdf)
+    		calculateScores();
+    		
     	Options opt = this.opt;
     	opt.recreateIndex = false;
     	this.index = new HashedIndex(this.db, opt);
     }
     
 
-    /**
+    private void calculateScores() {
+		
+		MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
+    	MongoCursor<IndexEntry> it = idxCol.find().iterator();
+
+    	// for every term in the db
+    	while(it.hasNext()){
+    		IndexEntry ie = it.next();        		
+    		PostingsList postings = ((HashedIndex)this.index).getPostings(ie.token);
+    		
+    		for(PostingsEntry pe : postings){
+    			
+    		}
+    	}
+    	
+		// for every doc in the postings list
+			// doc.score = tf(doc) * idf(doc)
+			// doc.score /= lenght(doc)
+		
+		// save the postings list		
+	}
+
+	/**
      *  Tokenizes and indexes the file @code{f}. If @code{f} is a directory,
      *  all its files and subdirectories are recursively processed.
      */
@@ -195,7 +235,7 @@ public class Indexer {
     public void recreateDB(){
     	
     	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
-    	MongoCollection<Document> docCol = this.db.getCollection("docs");
+    	MongoCollection<CorpusDocument> docCol = this.db.getCollection("docs", CorpusDocument.class);
     	
     	// clean the db
     	idxCol.drop();
@@ -205,29 +245,38 @@ public class Indexer {
     	idxCol.createIndex(new Document("term", 1));
     	docCol.createIndex(new Document("did", 1));    	
     }
-    
-    public void exportIndexToDB(){
-    	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
-    	MongoCollection<Document> docCol = this.db.getCollection("docs");		
-   
-	    for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
-	    	((HashedIndex)this.index).save(map.getKey(), map.getValue());
-    	}    	
-    	
+     
+    private void saveDocuments(){
     	// export doc names and lenghts
+    	
+    	MongoCollection<CorpusDocument> docCol = this.db.getCollection("docs", CorpusDocument.class);	
     	HashMap<String, String> docIDs = this.index.docIDs;
     	HashMap<String, Integer> docLenghts = this.index.docLengths;
     	
     	for(Map.Entry<String, String> map : docIDs.entrySet()){
-    		String docID = map.getKey();
-    		String docName = map.getValue();
-    		Integer docLenght = docLenghts.get(docID);
+    		String did = map.getKey();
     		
-    		Document doc = new Document("did", docID)
-    							.append("name", docName)
-    							.append("lenght", docLenght);
+    		CorpusDocument doc = new CorpusDocument();
+    		doc.did = Integer.decode(did);
+    		doc.name = map.getValue();
+    		doc.lenght = docLenghts.get(did);
     		docCol.insertOne(doc);
     	}
     }
+    
+	public HashMap<String, String> getDocumentsNames(PostingsList pl){
+		HashMap<String, String> docsInfo = new HashMap<>();
+		
+		MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
+		for(PostingsEntry pe : pl ){
+			CorpusDocument doc = col.find(eq("did", pe.docID)).first();
+			if(doc == null)
+				continue;
+			
+			docsInfo.put(Integer.toString(doc.did), doc.name);
+		}
+		
+		return docsInfo;
+	}
 }
 	

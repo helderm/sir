@@ -76,7 +76,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 	       
 	    		// flush cache to db
 	    	    for(Map.Entry<String, PostingsList> map : this){
-	    	    	save(map.getKey(), map.getValue());
+	    	    	savePostings(map.getKey(), map.getValue());
 	        	}   
 	    		
 	    		// clean the cache
@@ -85,7 +85,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	}		
     }
 
-    public void save(String token, PostingsList postings){
+    public void savePostings(String token, PostingsList postings){
 		Integer ptr = 0;
 
     	MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);    	
@@ -161,16 +161,9 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
         		IndexEntry ie = it.next();        		
         		pl.add(ie.postings);
         	}
-        	//Collections.sort(pl.getList());
         	
         	this.cache.put(token, pl);
     		
-    		/*IndexEntry ie = col.find(eq("term", token)).first();
-    		if(ie == null)
-    			return new PostingsList();
-    		
-    		pl = ie.postings;
-    		this.cache.put(token, pl);*/
 		}catch(Exception e){
     		System.err.println("Error while fetching token postings from db!");
      		System.err.println(e);
@@ -194,21 +187,30 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		tp.postings = getPostings(term);
     		termsPostings.add(tp);
     	}
-    	if(queryType != Index.PHRASE_QUERY)
+    	
+    	switch(queryType){
+    	case Index.INTERSECTION_QUERY:
+    		// reorder terms by increasing size of the postings list
     		Collections.sort(termsPostings);
+    	case Index.PHRASE_QUERY:
+        	int ptr = 1;
+        	PostingsList result = termsPostings.get(0).postings;
+        	
+        	while(result.size() > 0 && ptr < termsPostings.size()){
+        		if(queryType == Index.PHRASE_QUERY)
+        			result = positionalIntersect(result, termsPostings.get(ptr).postings, 1);
+        		else
+        			result = intersect(result, termsPostings.get(ptr).postings);
+        		ptr++;    		
+        	}
+        	
+        	return result;
+    	case Index.RANKED_QUERY:
+    		return new PostingsList();
+    	}  	
+    	
+    	return new PostingsList();
 
-    	int ptr = 1;
-    	PostingsList result = termsPostings.get(0).postings;
-    	
-    	while(result.size() > 0 && ptr < termsPostings.size()){
-    		if(queryType == Index.PHRASE_QUERY)
-    			result = positionalIntersect(result, termsPostings.get(ptr).postings, 1);
-    		else
-    			result = intersect(result, termsPostings.get(ptr).postings);
-    		ptr++;    		
-    	}
-    	
-    	return result;
     }
     
     private PostingsList intersect(PostingsList pl1, PostingsList pl2){
@@ -329,18 +331,4 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 		return this.cache.entrySet().iterator();
 	}
 	
-	public HashMap<String, String> getDocsInfo(PostingsList pl){
-		HashMap<String, String> docsInfo = new HashMap<>();
-		
-		MongoCollection<Document> col = this.db.getCollection("docs");
-		for(PostingsEntry pe : pl ){
-			Document doc = col.find(eq("did", Integer.toString(pe.docID))).first();
-			if(doc == null)
-				continue;
-			
-			docsInfo.put(doc.getString("did"), doc.getString("name"));
-		}
-		
-		return docsInfo;
-	}
 }
