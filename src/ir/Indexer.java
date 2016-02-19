@@ -44,23 +44,13 @@ public class Indexer {
     /** The index to be built up by this indexer. */
     public Index index;
     
-    /** The next docID to be generated. */
-    private int lastDocID = 0;
-
+	public Corpus corpus;
+    
 	private MongoClient client;
-
 	private MongoDatabase db;
-
 	private Options opt;
 
-
     /* ----------------------------------------------- */
-
-
-    /** Generates a new document identifier as an integer. */
-    private int generateDocID() {
-	return lastDocID++;
-    }
 
     /** Generates a new document identifier based on the file name. */
     private int generateDocID( String s ) {
@@ -93,6 +83,7 @@ public class Indexer {
     	this.db = client.getDatabase("findr");	
     	this.opt = opt;
     	this.index = new HashedIndex(this.db, this.opt);
+    	this.corpus = new Corpus(this.db, this.opt);
     }
 
 
@@ -108,7 +99,7 @@ public class Indexer {
 	    	((HashedIndex)this.index).savePostings(map.getKey(), map.getValue());
     	}    
 	    
-    	saveDocuments();
+    	//saveDocuments();
     	
     	// calculate the tf-idf scores of every term-document pair
     	if(this.opt.offlineTfIdf)
@@ -131,7 +122,7 @@ public class Indexer {
     		PostingsList postings = ((HashedIndex)this.index).getPostings(ie.token);
     		
     		for(PostingsEntry pe : postings){
-    			
+    			Integer docLength = this.corpus.getDocumentLength(pe.docID);
     		}
     	}
     	
@@ -160,9 +151,10 @@ public class Indexer {
 	    } else {
 		//System.err.println( "Indexing " + f.getPath() );
 		// First register the document and get a docID
-		int docID = generateDocID();
+		CorpusDocument doc = corpus.getDocument();
+		doc.name = f.getPath();
 
-		index.docIDs.put( "" + docID, f.getPath() );
+		//index.docIDs.put( "" + docID, f.getPath() );
 		//index.addDocID( "" + docID, f.getPath() );
 		try {
 		    //  Read the first few bytes of the file to see if it is 
@@ -189,9 +181,13 @@ public class Indexer {
 		    int offset = 0;
 		    while ( tok.hasMoreTokens() ) {
 			String token = tok.nextToken();
-			insertIntoIndex( docID, token, offset++ );
+			insertIntoIndex( doc.did, token, offset++ );
 		    }
-		    index.docLengths.put( "" + docID, offset );
+		    
+		    doc.lenght = offset;
+		    corpus.saveDocument(doc);
+		    
+		    //index.docLengths.put( "" + docID, offset );
 		    //index.addDocLenght( "" + docID, offset );
 		    reader.close();
 		}
@@ -247,8 +243,7 @@ public class Indexer {
     }
      
     private void saveDocuments(){
-    	// export doc names and lenghts
-    	
+    	// export doc names and lenghts    	
     	MongoCollection<CorpusDocument> docCol = this.db.getCollection("docs", CorpusDocument.class);	
     	HashMap<String, String> docIDs = this.index.docIDs;
     	HashMap<String, Integer> docLenghts = this.index.docLengths;
@@ -262,21 +257,6 @@ public class Indexer {
     		doc.lenght = docLenghts.get(did);
     		docCol.insertOne(doc);
     	}
-    }
-    
-	public HashMap<String, String> getDocumentsNames(PostingsList pl){
-		HashMap<String, String> docsInfo = new HashMap<>();
-		
-		MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
-		for(PostingsEntry pe : pl ){
-			CorpusDocument doc = col.find(eq("did", pe.docID)).first();
-			if(doc == null)
-				continue;
-			
-			docsInfo.put(Integer.toString(doc.did), doc.name);
-		}
-		
-		return docsInfo;
-	}
+    }    
 }
 	
