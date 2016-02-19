@@ -10,6 +10,7 @@ package ir;
 
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.ListIterator;
 
 import java.io.Serializable;
@@ -20,9 +21,17 @@ import java.io.Serializable;
 public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     
     /** The postings list as a linked list. */
-    private LinkedList<PostingsEntry> list = new LinkedList<PostingsEntry>();
+    private LinkedList<PostingsEntry> list;
 	//private ArrayList<PostingsEntry> list = new ArrayList<PostingsEntry>();
+    
+	public PostingsList() {
+		list = new LinkedList<PostingsEntry>();
+	}
 
+	public PostingsList(List<PostingsEntry> subList) {
+		list = new LinkedList<PostingsEntry>(subList);
+	}
+    
     /**  Number of postings in this list  */
     public int size() {
 	return list.size();
@@ -31,6 +40,10 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     /**  Returns the ith posting */
     public PostingsEntry get( int i ) {
 	return list.get( i );
+    }
+    
+    public PostingsList get(int i, int j){
+    	return new PostingsList(list.subList(i, Math.min(j, list.size())));
     }
 
     public void add(PostingsEntry posting){
@@ -54,8 +67,7 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     	this.list.add(posting);
     }
 
-    public void add(PostingsList postings){
-    	
+    public void add(PostingsList postings){    	
     	for(PostingsEntry posting : postings){
     		this.add(posting);
     	}
@@ -64,6 +76,11 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry>{
 	@Override
 	public Iterator<PostingsEntry> iterator() {
 		return list.iterator();
+	}
+	
+	public LinkedList<PostingsEntry>getList(){
+		//TODO: Lame, refactor that
+		return list;
 	}
 }
 	

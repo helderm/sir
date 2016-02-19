@@ -19,8 +19,10 @@ import java.util.Map;
 import org.bson.Document;
 
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import static com.mongodb.client.model.Filters.*;
+import org.bson.types.ObjectId;
 
 /**
  *   Implements an inverted index as a Hashtable from words to PostingsLists.
@@ -33,6 +35,8 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 
 	private boolean flushCache;
 	private Integer cacheSize;
+	private Integer postingsMaxSize;
+	
 
     public HashedIndex(MongoDatabase db, Options opt) {
     	if(opt.cacheSize >= 0){    		
@@ -44,6 +48,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	this.db = db;
     	
    		this.flushCache = opt.recreateIndex;
+   		this.postingsMaxSize = opt.postingsMaxSize;
 	}
 
     /**
@@ -81,20 +86,42 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     }
 
     public void save(String token, PostingsList postings){
+		Integer ptr = 0;
 
-    	MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
+    	MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);    	
+    	MongoCursor<IndexEntry> it = col.find(eq("term", token)).iterator();
     	
-    	IndexEntry ie = col.find(eq("term", token)).first();
-		if(ie != null){
-			ie.postings.add(postings);
-			col.findOneAndReplace(eq("term", token), ie);
-			return;
+    	ArrayList<ObjectId> entriesIds = new ArrayList<>();
+    	PostingsList joinedPostings = new PostingsList();
+    	
+    	while(it.hasNext()){
+    		IndexEntry ie = it.next();
+    		joinedPostings.add(ie.postings);
+    		entriesIds.add(ie.id);
+    	}
+    	
+    	joinedPostings.add(postings);
+    	Collections.sort(joinedPostings.getList());
+    	
+    	while(ptr < joinedPostings.size() && entriesIds.size() > 0){
+    		ObjectId eid = entriesIds.get(0);
+    		IndexEntry ie = new IndexEntry();
+    		ie.id = eid;
+    		ie.postings = joinedPostings.get(ptr, ptr + this.postingsMaxSize);  
+    		ie.token = token;
+    		ptr += this.postingsMaxSize;
+    		entriesIds.remove(0);
+    		col.findOneAndReplace(eq("_id", ie.id), ie);
+    	}
+    	
+		// split into several smaller index entries if the term is too common	
+		while(ptr < joinedPostings.size()){
+			IndexEntry ie = new IndexEntry();
+		   	ie.token = token;
+		   	ie.postings = joinedPostings.get(ptr, ptr + this.postingsMaxSize);
+	    	col.insertOne(ie);
+	    	ptr += this.postingsMaxSize;
 		}
-    	
-		ie = new IndexEntry();
-	   	ie.token = token;
-	   	ie.postings = postings;
-    	col.insertOne(ie);
     }
     
     
@@ -122,15 +149,28 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	if(this.db == null)
     		return new PostingsList();
     	
+    	pl = new PostingsList();
+    	
     	// try to fetch from db
 		try{
     		MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
-    		IndexEntry ie = col.find(eq("term", token)).first();
+        	MongoCursor<IndexEntry> it = col.find(eq("term", token)).iterator();
+        	
+        	// add postings to every index entry until it is filled
+        	while(it.hasNext()){
+        		IndexEntry ie = it.next();        		
+        		pl.add(ie.postings);
+        	}
+        	//Collections.sort(pl.getList());
+        	
+        	this.cache.put(token, pl);
+    		
+    		/*IndexEntry ie = col.find(eq("term", token)).first();
     		if(ie == null)
     			return new PostingsList();
     		
     		pl = ie.postings;
-    		this.cache.put(token, pl);
+    		this.cache.put(token, pl);*/
 		}catch(Exception e){
     		System.err.println("Error while fetching token postings from db!");
      		System.err.println(e);
