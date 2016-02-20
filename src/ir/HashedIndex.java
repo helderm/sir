@@ -323,7 +323,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	for(Query.TermPostings tp : query){
     		// for each doc in the postings lists
     		for(PostingsEntry pe : tp.postings){
-    			answer.add(pe);
+    			answer.add(new PostingsEntry(pe));
     		}
     	}
     	

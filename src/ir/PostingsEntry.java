@@ -18,6 +18,17 @@ public class PostingsEntry implements Comparable<PostingsEntry> {
     
     public ArrayList<Integer> positions = new ArrayList<Integer>();
     
+    public PostingsEntry(PostingsEntry pe) {
+		this.docID = pe.docID;
+		this.score = pe.score;
+		this.positions = new ArrayList<Integer>();
+		for(Integer pos : pe.positions)
+			this.positions.add(pos);
+	}
+    
+    public PostingsEntry() {	
+	}
+    
     public static final Comparator<PostingsEntry> SCORE_ORDER = 
             new Comparator<PostingsEntry>() {
     			public int compare(PostingsEntry e1, PostingsEntry e2) {
