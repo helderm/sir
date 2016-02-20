@@ -18,6 +18,7 @@ import java.io.StringReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 import org.apache.pdfbox.cos.COSDocument;
@@ -89,6 +90,10 @@ public class Indexer {
 
     /* ----------------------------------------------- */
 
+    /**
+     * Build a new index and store it into disk
+     * @param f
+     */
     public void buildIndex(File f){    	
     	
     	// parse the files and build the index
@@ -97,10 +102,9 @@ public class Indexer {
     	// export the remaining index entries and docs info
 	    for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
 	    	((HashedIndex)this.index).savePostings(map.getKey(), map.getValue());
-    	}    
-	    
-    	//saveDocuments();
-    	
+    	} 
+	    this.index = new HashedIndex(this.db, this.opt);	    
+
     	// calculate the tf-idf scores of every term-document pair
     	if(this.opt.offlineTfIdf)
     		calculateScores();
@@ -110,27 +114,36 @@ public class Indexer {
     	this.index = new HashedIndex(this.db, opt);
     }
     
-
+	/**
+	 * Calculate the TF-IDF scores for every term in the db
+	 */
     private void calculateScores() {
 		
 		MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
     	MongoCursor<IndexEntry> it = idxCol.find().iterator();
 
+    	HashSet<String> updatedTerms = new HashSet<>();
+    	
     	// for every term in the db
     	while(it.hasNext()){
     		IndexEntry ie = it.next();        		
+    		
+    		if(updatedTerms.contains(ie.token))
+    			continue;    		
+    		
     		PostingsList postings = ((HashedIndex)this.index).getPostings(ie.token);
     		
+    		Double idf = this.corpus.idf(postings);
     		for(PostingsEntry pe : postings){
-    			Integer docLength = this.corpus.getDocumentLength(pe.docID);
+    			CorpusDocument doc = this.corpus.getDocument(pe.docID);
+    			pe.score = this.corpus.tf(pe) * idf;
+    			pe.score /= doc.lenght;    			
     		}
+    		
+    		((HashedIndex)this.index).savePostings(ie.token, postings);
+    		updatedTerms.add(ie.token);
     	}
-    	
-		// for every doc in the postings list
-			// doc.score = tf(doc) * idf(doc)
-			// doc.score /= lenght(doc)
-		
-		// save the postings list		
+
 	}
 
 	/**
@@ -241,22 +254,5 @@ public class Indexer {
     	idxCol.createIndex(new Document("term", 1));
     	docCol.createIndex(new Document("did", 1));    	
     }
-     
-    private void saveDocuments(){
-    	// export doc names and lenghts    	
-    	MongoCollection<CorpusDocument> docCol = this.db.getCollection("docs", CorpusDocument.class);	
-    	HashMap<String, String> docIDs = this.index.docIDs;
-    	HashMap<String, Integer> docLenghts = this.index.docLengths;
-    	
-    	for(Map.Entry<String, String> map : docIDs.entrySet()){
-    		String did = map.getKey();
-    		
-    		CorpusDocument doc = new CorpusDocument();
-    		doc.did = Integer.decode(did);
-    		doc.name = map.getValue();
-    		doc.lenght = docLenghts.get(did);
-    		docCol.insertOne(doc);
-    	}
-    }    
 }
 	

@@ -30,6 +30,19 @@ public class Corpus {
     	return doc;
     }
     
+    public CorpusDocument getDocument(Integer did){
+    	if(this.cache.containsKey(did))
+    		return this.cache.get(did);
+    	
+    	MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
+    	CorpusDocument doc = col.find(eq("did", did)).first();
+    	if(doc == null)
+    		return null;
+    	
+    	this.cache.put(did, doc);
+    	return doc;
+    }
+    
     public void saveDocument(CorpusDocument doc){
     	MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);    	
     	col.insertOne(doc);   	
@@ -38,7 +51,7 @@ public class Corpus {
     }
 	
     public Long getSize(){
-    	if(this.size > 0)
+    	if(this.size > 0L)
     		return this.size;
     	
     	MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
@@ -51,31 +64,27 @@ public class Corpus {
 		
 		MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
 		for(PostingsEntry pe : pl ){
-			if(this.cache.containsKey(pe.docID)){
-				docsInfo.put(Integer.toString(pe.docID), this.cache.get(pe.docID).name);
-				continue;
-			}
 			
-			CorpusDocument doc = col.find(eq("did", pe.docID)).first();
+			CorpusDocument doc = this.getDocument(pe.docID);
 			if(doc == null)
 				continue;
 			
 			docsInfo.put(Integer.toString(doc.did), doc.name);
-			this.cache.put(doc.did, doc);
 		}
 		
 		return docsInfo;
 	}
-	
-    public Integer getDocumentLength(Integer did){
-    	if(this.cache.containsKey(did))
-    		return this.cache.get(did).lenght;
+  
+    public Double idf(PostingsList postings){
+    	Long corpusSize = this.getSize();
+    	Integer docFrequency = postings.size();
     	
-    	MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
-    	
-    	CorpusDocument doc = col.find(eq("did", did)).first();
-    	this.cache.put(doc.did, doc);
-    	return doc.lenght;    	
+    	Double idf = Math.log10(corpusSize / docFrequency);
+    	return idf;
+    }
+    
+    public Integer tf(PostingsEntry pe){
+    	return pe.positions.size();
     }
     
 }

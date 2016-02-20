@@ -57,8 +57,17 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     			break;
     		
     		if(p.docID == posting.docID){
-    			p.score++;
-    			p.positions.addAll(posting.positions);
+    			// add the position to the list
+    			for(Integer position : posting.positions){
+    				if(p.positions.contains(position))
+    					continue;
+    				p.positions.add(position);
+    			}
+    			
+    			// set the new score
+    			if(p.score == -1)
+    				p.score = posting.score;
+    			
     			return;
     		}
     	}

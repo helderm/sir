@@ -61,7 +61,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
       	
 		PostingsEntry posting = new PostingsEntry();
 		posting.docID = docID;
-		posting.score = 1;
+		posting.score = -1;
 		posting.positions.add(offset);
     	
     	if(postings != null){
@@ -102,7 +102,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	
     	joinedPostings.add(postings);
     	Collections.sort(joinedPostings.getList());
-    	
+    	    	
     	while(ptr < joinedPostings.size() && entriesIds.size() > 0){
     		ObjectId eid = entriesIds.get(0);
     		IndexEntry ie = new IndexEntry();
@@ -293,10 +293,6 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 							newPe.score = pe2.score;
 							answer.add(newPe);							
 						}
-						
-
-						//answer.add(pe1);
-						//break;
 					}
     			}
         		
@@ -322,7 +318,6 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	return answer;
     }
     
-
     public void cleanup() {
     }
 
