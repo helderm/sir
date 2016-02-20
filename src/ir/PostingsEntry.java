@@ -8,22 +8,22 @@
 
 package ir;
 
-import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Comparator;
 
-import org.bson.BsonReader;
-import org.bson.BsonType;
-import org.bson.BsonWriter;
-import org.bson.codecs.Codec;
-import org.bson.codecs.DecoderContext;
-import org.bson.codecs.EncoderContext;
-
-public class PostingsEntry implements Comparable<PostingsEntry>, Serializable {
+public class PostingsEntry implements Comparable<PostingsEntry> {
     
     public int docID;
     public double score;
     
     public ArrayList<Integer> positions = new ArrayList<Integer>();
+    
+    public static final Comparator<PostingsEntry> SCORE_ORDER = 
+            new Comparator<PostingsEntry>() {
+    			public int compare(PostingsEntry e1, PostingsEntry e2) {
+    				return Double.compare( e2.score, e1.score );
+    			}
+    		};
 
     /**
      *  PostingsEntries are compared by their score (only relevant 

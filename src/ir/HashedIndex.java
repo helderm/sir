@@ -32,11 +32,9 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     private LruCache<String,PostingsList> cache;
     
     private MongoDatabase db;
-
 	private boolean flushCache;
 	private Integer cacheSize;
-	private Integer postingsMaxSize;
-	
+	private Integer postingsMaxSize;	
 
     public HashedIndex(MongoDatabase db, Options opt) {
     	if(opt.cacheSize >= 0){    		
@@ -61,7 +59,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
       	
 		PostingsEntry posting = new PostingsEntry();
 		posting.docID = docID;
-		posting.score = -1;
+		posting.score = 0.0;
 		posting.positions.add(offset);
     	
     	if(postings != null){
@@ -206,7 +204,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
         	
         	return result;
     	case Index.RANKED_QUERY:
-    		return new PostingsList();
+    		return fastCosineScore(termsPostings);
     	}  	
     	
     	return new PostingsList();
@@ -316,6 +314,22 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	}    	
     	
     	return answer;
+    }
+    
+    public PostingsList fastCosineScore(ArrayList<Query.TermPostings> query){
+    	PostingsList answer = new PostingsList();
+    	
+    	// for each query term
+    	for(Query.TermPostings tp : query){
+    		// for each doc in the postings lists
+    		for(PostingsEntry pe : tp.postings){
+    			answer.add(pe);
+    		}
+    	}
+    	
+    	Collections.sort(answer.getList(), PostingsEntry.SCORE_ORDER);    	
+    	return answer;
+    	
     }
     
     public void cleanup() {

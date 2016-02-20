@@ -8,6 +8,7 @@
 
 package ir;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -65,8 +66,7 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     			}
     			
     			// set the new score
-    			if(p.score == -1)
-    				p.score = posting.score;
+    			p.score += posting.score;
     			
     			return;
     		}
@@ -74,6 +74,7 @@ public class PostingsList implements Serializable, Iterable<PostingsEntry>{
     	
     	// add new posting to the list
     	this.list.add(posting);
+    	Collections.sort(this.list);
     }
 
     public void add(PostingsList postings){    	

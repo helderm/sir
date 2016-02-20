@@ -83,8 +83,8 @@ public class Indexer {
     	this.client = new MongoClient("localhost:27017", options);
     	this.db = client.getDatabase("findr");	
     	this.opt = opt;
-    	this.index = new HashedIndex(this.db, this.opt);
     	this.corpus = new Corpus(this.db, this.opt);
+    	this.index = new HashedIndex(this.db, this.opt);
     }
 
 
@@ -111,7 +111,6 @@ public class Indexer {
     		
     	Options opt = this.opt;
     	opt.recreateIndex = false;
-    	this.index = new HashedIndex(this.db, opt);
     }
     
 	/**
