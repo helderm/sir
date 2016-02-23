@@ -16,18 +16,16 @@ public class PageRank{
      *   don't have more docs than we can keep in main memory.
      */
     final static int MAX_NUMBER_OF_DOCS = 2000000;
-    
-    
-    /**
-     * Special "doc id" that represents when there is no link between the doc and other docs 
-     */
-    public static final int NO_LINK = -1;
-    
-    
+   
     /**
      * Probability of a doc without any links, its just equal probabilities of all docs
      */
     public Double noLinksDocProb = 0.0;
+    
+    /**
+     * Probability of getting bored at a doc and moving somewhere randomly
+     */
+    public Double boredProbability = 0.0;
 
     /**
      *   Mapping from document names to document numbers.
@@ -176,6 +174,8 @@ public class PageRank{
     	// 'if a row of A has no 1s, replace each element by 1/N'
     	this.noLinksDocProb = 1.0 / numberOfDocs;
     	
+    	this.boredProbability = BORED / numberOfDocs;
+    	
     	// calculate the page rank for every doc
     	for(Map.Entry<Integer, Hashtable<Integer,Double>> map : this.link.entrySet()){
     		Hashtable<Integer,Double> docLinks = map.getValue();
@@ -187,23 +187,17 @@ public class PageRank{
     		linkProb *= (1.0 - BORED);
     		
     		// 'add alpha / N to every entry of the resulting matrix'
-    		Double boredProb = BORED / numberOfDocs;
-    		linkProb += boredProb;
-    		docLinks.put(NO_LINK, 0.0);
+    		linkProb += this.boredProbability;
     		
     		for(Map.Entry<Integer, Double> map2 : docLinks.entrySet()){
     			Integer docId = map2.getKey();
-    			Double transProb = map2.getValue();
-    			transProb += boredProb;
-    			if(docId != NO_LINK)
-    				transProb = linkProb;
-    			docLinks.put(docId, transProb);
+    			docLinks.put(docId, linkProb);
     		}
     		
-    		Double totalBoredProb = boredProb * (numberOfDocs - (docLinks.size() - 1));
-    		Double totalLinkProb = linkProb * (docLinks.size() - 1);
+    		Double totalBoredProb = this.boredProbability * (numberOfDocs - (docLinks.size()));
+    		Double totalLinkProb = linkProb * (docLinks.size());
     		
-    		if(almostEqual(1.0, totalBoredProb + totalLinkProb, 0.00001) == false)
+    		if(almostEqual(1.0, totalBoredProb + totalLinkProb, 0.000001) == false)
     			throw new Exception("Assertion failed!");
     	}
     	
@@ -226,15 +220,14 @@ public class PageRank{
 		}
 		currState.set(0, 1.0);
 		
-		while(iter < 50){
+		while(iter < 1){
 			Double totalSum = 0.0;			
 			
 			for(Integer i=0; i < numberOfDocs; i++){
 				Double sum = 0.0;
 				
 				for(Integer j=0; j < numberOfDocs; j++){					
-					Double currStateProb = currState.get(j);
-					
+					Double currStateProb = currState.get(j);					
 					
 					Hashtable<Integer, Double> probs = link.get(j);
 					Double transProb = 0.0;
@@ -243,7 +236,7 @@ public class PageRank{
 					}else if(probs.containsKey(i)){
 						transProb = probs.get(i);
 					}else
-						transProb = probs.get(NO_LINK);
+						transProb = this.boredProbability;
 						
 					sum += currStateProb * transProb;
 				}
@@ -252,8 +245,8 @@ public class PageRank{
 			}
 			
 			
-			//if(this.almostEqual(totalSum, 1.0, 0.001) == false)
-			//	throw new Exception("Assertion failed!");
+			if(this.almostEqual(totalSum, 1.0, 0.000001) == false)
+				throw new Exception("Assertion failed!");
 				
 			for(PostingsEntry doc : docs){
 				currState.set(doc.docID, doc.score);
@@ -266,7 +259,7 @@ public class PageRank{
 		Collections.sort(docs, PostingsEntry.SCORE_ORDER);
 		Integer count = 50;
 		for(PostingsEntry pe : docs){
-			System.out.println("doc [" + pe.docID + "] = ["+ pe.score +"]");
+			System.out.println("doc [" + this.docName[pe.docID] + "] = ["+ pe.score +"]");
 			if(count == 0)
 				break;
 			count--;
