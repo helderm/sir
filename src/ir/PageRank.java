@@ -16,6 +16,18 @@ public class PageRank{
      *   don't have more docs than we can keep in main memory.
      */
     final static int MAX_NUMBER_OF_DOCS = 2000000;
+    
+    
+    /**
+     * Special "doc id" that represents when there is no link between the doc and other docs 
+     */
+    public static final int NO_LINK = -1;
+    
+    
+    /**
+     * Probability of a doc without any links, its just equal probabilities of all docs
+     */
+    public Double noLinksDocProb = 0.0;
 
     /**
      *   Mapping from document names to document numbers.
@@ -38,7 +50,7 @@ public class PageRank{
      *   If there are no outlinks from i, then the value corresponding 
      *   key i is null.
      */
-    Hashtable<Integer,Hashtable<Integer,Boolean>> link = new Hashtable<Integer,Hashtable<Integer,Boolean>>();
+    Hashtable<Integer,Hashtable<Integer,Double>> link = new Hashtable<Integer,Hashtable<Integer,Double>>();
 
     /**
      *   The number of outlinks from each node.
@@ -54,7 +66,7 @@ public class PageRank{
      *   The probability that the surfer will be bored, stop
      *   following links, and take a random jump somewhere.
      */
-    final static double BORED = 0.15;
+    final static double BORED = 0.5;
 
     /**
      *   Convergence criterion: Transition probabilities do not 
@@ -72,16 +84,17 @@ public class PageRank{
     /* --------------------------------------------- */
 
 
-    public PageRank( String filename ) {
+    public PageRank( String filename ) throws Exception {
 	int noOfDocs = readDocs( filename );
-	computePagerank( noOfDocs );
+	computeTransitionProbabilities( noOfDocs );
+	computePageRank( noOfDocs );
     }
 
 
     /* --------------------------------------------- */
 
 
-    /**
+	/**
      *   Reads the documents and creates the docs table. When this method 
      *   finishes executing then the @code{out} vector of outlinks is 
      *   initialised for each doc, and the @code{p} matrix is filled with
@@ -121,10 +134,10 @@ public class PageRank{
 		    // Set the probability to 0 for now, to indicate that there is
 		    // a link from fromdoc to otherDoc.
 		    if ( link.get(fromdoc) == null ) {
-			link.put(fromdoc, new Hashtable<Integer,Boolean>());
+			link.put(fromdoc, new Hashtable<Integer,Double>());
 		    }
 		    if ( link.get(fromdoc).get(otherDoc) == null ) {
-			link.get(fromdoc).put( otherDoc, true );
+			link.get(fromdoc).put( otherDoc, 0.0 );
 			out[fromdoc]++;
 		    }
 		}
@@ -158,22 +171,125 @@ public class PageRank{
     /*
      *   Computes the pagerank of each document.
      */
-    void computePagerank( int numberOfDocs ) {
-	//
-	//   YOUR CODE HERE
-	//
+    void computeTransitionProbabilities( int numberOfDocs ) throws Exception {
+
+    	// 'if a row of A has no 1s, replace each element by 1/N'
+    	this.noLinksDocProb = 1.0 / numberOfDocs;
+    	
+    	// calculate the page rank for every doc
+    	for(Map.Entry<Integer, Hashtable<Integer,Double>> map : this.link.entrySet()){
+    		Hashtable<Integer,Double> docLinks = map.getValue();
+
+    		// 'divide each 1 in A by the number of 1s in its row'
+    		Double linkProb = 1.0 / docLinks.size();
+    		
+    		// 'multiply the resulting A by 1 - alpha'	
+    		linkProb *= (1.0 - BORED);
+    		
+    		// 'add alpha / N to every entry of the resulting matrix'
+    		Double boredProb = BORED / numberOfDocs;
+    		linkProb += boredProb;
+    		docLinks.put(NO_LINK, 0.0);
+    		
+    		for(Map.Entry<Integer, Double> map2 : docLinks.entrySet()){
+    			Integer docId = map2.getKey();
+    			Double transProb = map2.getValue();
+    			transProb += boredProb;
+    			if(docId != NO_LINK)
+    				transProb = linkProb;
+    			docLinks.put(docId, transProb);
+    		}
+    		
+    		Double totalBoredProb = boredProb * (numberOfDocs - (docLinks.size() - 1));
+    		Double totalLinkProb = linkProb * (docLinks.size() - 1);
+    		
+    		if(almostEqual(1.0, totalBoredProb + totalLinkProb, 0.00001) == false)
+    			throw new Exception("Assertion failed!");
+    	}
+    	
     }
 
+
+
+    private void computePageRank(Integer numberOfDocs) throws Exception {
+		ArrayList<PostingsEntry> docs = new ArrayList<PostingsEntry>(numberOfDocs);
+		ArrayList<Double> currState = new ArrayList<Double>(numberOfDocs);
+		Integer iter = 0;
+		
+		// initial state prob
+		for(Integer docId = 0; docId < numberOfDocs; docId++){
+			PostingsEntry pe = new PostingsEntry();
+			pe.docID = docId;
+			pe.score = 0.0;
+			docs.add(pe);
+			currState.add(docId, 0.0);
+		}
+		currState.set(0, 1.0);
+		
+		while(iter < 50){
+			Double totalSum = 0.0;			
+			
+			for(Integer i=0; i < numberOfDocs; i++){
+				Double sum = 0.0;
+				
+				for(Integer j=0; j < numberOfDocs; j++){					
+					Double currStateProb = currState.get(j);
+					
+					
+					Hashtable<Integer, Double> probs = link.get(j);
+					Double transProb = 0.0;
+					if(probs == null){
+						transProb = this.noLinksDocProb;
+					}else if(probs.containsKey(i)){
+						transProb = probs.get(i);
+					}else
+						transProb = probs.get(NO_LINK);
+						
+					sum += currStateProb * transProb;
+				}
+				docs.get(i).score = sum;
+				totalSum += sum;				
+			}
+			
+			
+			//if(this.almostEqual(totalSum, 1.0, 0.001) == false)
+			//	throw new Exception("Assertion failed!");
+				
+			for(PostingsEntry doc : docs){
+				currState.set(doc.docID, doc.score);
+			}
+			
+			iter++;
+			System.out.println("Iteration " + iter);
+		}
+    	
+		Collections.sort(docs, PostingsEntry.SCORE_ORDER);
+		Integer count = 50;
+		for(PostingsEntry pe : docs){
+			System.out.println("doc [" + pe.docID + "] = ["+ pe.score +"]");
+			if(count == 0)
+				break;
+			count--;
+		}
+		
+    	System.err.println("Finished!");
+		
+	}
+    
 
     /* --------------------------------------------- */
 
 
-    public static void main( String[] args ) {
+    public static void main( String[] args ) throws Exception {
 	if ( args.length != 1 ) {
 	    System.err.println( "Please give the name of the link file" );
 	}
 	else {
 	    new PageRank( args[0] );
 	}
+    }
+    
+    public boolean almostEqual(double a, double b, double eps){
+    	return Math.abs(a-b)<eps;
     }
 }
