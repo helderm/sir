@@ -64,7 +64,7 @@ public class PageRank{
      *   The probability that the surfer will be bored, stop
      *   following links, and take a random jump somewhere.
      */
-    final static double BORED = 0.5;
+    final static double BORED = 0.15;
 
     /**
      *   Convergence criterion: Transition probabilities do not 
@@ -220,9 +220,10 @@ public class PageRank{
 		}
 		currState.set(0, 1.0);
 		
-		while(iter < 1){
+		while(iter < 50){
 			Double totalSum = 0.0;			
 			
+			// do the matrix multiplcation
 			for(Integer i=0; i < numberOfDocs; i++){
 				Double sum = 0.0;
 				
@@ -245,15 +246,22 @@ public class PageRank{
 			}
 			
 			
-			if(this.almostEqual(totalSum, 1.0, 0.000001) == false)
+			if(this.almostEqual(totalSum, 1.0, 0.000000001) == false)
 				throw new Exception("Assertion failed!");
 				
+			// copy the new state to the current state
+			Double diff = 0.0; 
 			for(PostingsEntry doc : docs){
+				diff += Math.abs(doc.score - currState.get(doc.docID));
 				currState.set(doc.docID, doc.score);
 			}
 			
+			// break if the state did not change much between iterations
+			if(diff < EPSILON)
+				break;
+			
 			iter++;
-			System.out.println("Iteration " + iter);
+			System.out.println("Iteration " + iter + ": diff = " + diff);
 		}
     	
 		Collections.sort(docs, PostingsEntry.SCORE_ORDER);
