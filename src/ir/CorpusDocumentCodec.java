@@ -14,6 +14,7 @@ public class CorpusDocumentCodec implements Codec<CorpusDocument>{
 		writer.writeInt32("did", doc.did);
 		writer.writeString("name", doc.name);
 		writer.writeInt32("lenght", doc.lenght);
+		writer.writeDouble("rank", doc.rank);
 		writer.writeEndDocument();		
 	}
 
@@ -32,6 +33,7 @@ public class CorpusDocumentCodec implements Codec<CorpusDocument>{
 		doc.did = reader.readInt32("did");
 		doc.name = reader.readString("name");
 		doc.lenght = reader.readInt32("lenght");
+		doc.rank = reader.readDouble("rank");
 		
 		reader.readEndDocument();
 		

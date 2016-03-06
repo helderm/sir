@@ -2,7 +2,10 @@ package ir;
 
 import static com.mongodb.client.model.Filters.eq;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+
+import org.bson.Document;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
@@ -12,6 +15,10 @@ public class Corpus {
 	private LruCache<Integer, CorpusDocument> cache;
 	private MongoDatabase db;
     private int lastDocID = 0;
+    
+    // min and max pagerank scores,for data normalization
+    private Double minRank = 1.0;
+    private Double maxRank = 0.0;
 	
 	public Corpus(MongoDatabase db, Options opt) {
     	if(opt.cacheSize >= 0){    		
@@ -86,5 +93,44 @@ public class Corpus {
     public Integer tf(PostingsEntry pe){
     	return pe.positions.size();
     }
+
+	public void savePageranks(ArrayList<CorpusDocument> docs) {
+		MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
+		
+		for(CorpusDocument doc : docs){
+			// find a doc with the same name in the db
+			CorpusDocument dbDoc = col.find(eq("name", doc.name)).first();
+			if(dbDoc == null){
+				System.err.println("Couldnt find doc named ["+doc.name+"] in the db, ignoring it...");
+				continue;
+			}
+			
+			dbDoc.rank = doc.rank;
+			col.findOneAndReplace(eq("_id", dbDoc.id), dbDoc);
+		}
+		
+	}
+	
+	public Double getMinRank(){
+		if(this.minRank < 1.0)
+			return this.minRank;
+		
+		MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);		
+		CorpusDocument doc = col.find().sort(new Document("rank", 1)).first();
+		
+		this.minRank = doc.rank;
+		return this.minRank;
+	}
+	
+	public Double getMaxRank(){
+		if(this.maxRank > 0.0)
+			return this.maxRank;
+		
+		MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);		
+		CorpusDocument doc = col.find().sort(new Document("rank", -1)).first();
+		
+		this.maxRank = doc.rank;
+		return this.maxRank;
+	}
     
 }

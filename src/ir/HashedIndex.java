@@ -13,6 +13,7 @@ package ir;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -34,9 +35,14 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     private MongoDatabase db;
 	private boolean flushCache;
 	private Integer cacheSize;
-	private Integer postingsMaxSize;	
+	private Integer postingsMaxSize;
+	private Corpus corpus;	
+	
+	// min and max tfidf scores, for data normalization
+	private Double minScore = 99.0;
+	private Double maxScore = -1.0;
 
-    public HashedIndex(MongoDatabase db, Options opt) {
+    public HashedIndex(MongoDatabase db, Corpus corpus, Options opt) {
     	if(opt.cacheSize >= 0){    		
     		this.cacheSize = opt.cacheSize;
     	}else
@@ -47,6 +53,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	
    		this.flushCache = opt.recreateIndex;
    		this.postingsMaxSize = opt.postingsMaxSize;
+   		this.corpus = corpus;
 	}
 
     /**
@@ -190,6 +197,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	case Index.INTERSECTION_QUERY:
     		// reorder terms by increasing size of the postings list
     		Collections.sort(termsPostings);
+    		
     	case Index.PHRASE_QUERY:
         	int ptr = 1;
         	PostingsList result = termsPostings.get(0).postings;
@@ -203,8 +211,17 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
         	}
         	
         	return result;
-    	case Index.RANKED_QUERY:
-    		return fastCosineScore(termsPostings);
+        	
+    	case Index.RANKED_QUERY:    		
+    		switch(rankingType){
+    		case Index.PAGERANK:
+    			return rankedQuery(termsPostings, 0.0, 1.0);
+    		case Index.COMBINATION:
+    			return rankedQuery(termsPostings, 0.5, 0.5);
+    		case Index.TF_IDF:
+    		default:
+    			return rankedQuery(termsPostings, 1.0, 0.0);
+    		}
     	}  	
     	
     	return new PostingsList();
@@ -316,14 +333,21 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	return answer;
     }
     
-    public PostingsList fastCosineScore(ArrayList<Query.TermPostings> query){
+    public PostingsList rankedQuery(ArrayList<Query.TermPostings> query, Double tfidf, Double pagerank){
     	PostingsList answer = new PostingsList();
     	
     	// for each query term
     	for(Query.TermPostings tp : query){
     		// for each doc in the postings lists
     		for(PostingsEntry pe : tp.postings){
-    			answer.add(new PostingsEntry(pe));
+    			PostingsEntry ape = new PostingsEntry(pe);
+    			CorpusDocument doc = this.corpus.getDocument(pe.docID);
+    			
+    			Double score = (pe.score - getMinScore()) / (getMaxScore() - getMinScore());
+    			Double rank = (doc.rank - this.corpus.getMinRank()) / (this.corpus.getMaxRank() - this.corpus.getMinRank());
+    			
+    			ape.score = (tfidf * score) + (pagerank * rank);
+    			answer.add(ape);
     		}
     	}
     	
@@ -331,6 +355,74 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	return answer;
     	
     }
+    
+	/**
+	 * Calculate the TF-IDF scores for every term in the db
+	 */
+    public void calculateScores() {
+		
+		MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
+    	MongoCursor<IndexEntry> it = col.find().iterator();
+
+    	HashSet<String> updatedTerms = new HashSet<>();
+    	Double minScore = 1.0;
+    	Double maxScore = 0.0;
+    	
+    	// for every term in the db
+    	while(it.hasNext()){
+    		IndexEntry ie = it.next();        		
+    		
+    		if(updatedTerms.contains(ie.token))
+    			continue;    		
+    		
+    		PostingsList postings = getPostings(ie.token);
+    		
+    		Double idf = this.corpus.idf(postings);
+    		for(PostingsEntry pe : postings){
+    			CorpusDocument doc = this.corpus.getDocument(pe.docID);
+    			pe.score = this.corpus.tf(pe) * idf;
+    			pe.score /= doc.lenght;    
+    			
+    			if(pe.score < minScore)
+    				minScore = pe.score;
+    			if(pe.score > maxScore)
+    				maxScore = pe.score;
+    		}
+    		
+    		savePostings(ie.token, postings);
+    		updatedTerms.add(ie.token);
+    	}
+    	
+    	// save the special 
+    	MongoCollection<Document> scCol = this.db.getCollection("scores");
+    	Document score = new Document();
+    	score.append("type", "tfidf");
+    	score.append("max", maxScore).append("min", minScore);
+    	scCol.insertOne(score);
+
+	}
+    
+	public Double getMinScore(){
+		if(this.minScore < 99.0)
+			return this.minScore;
+		
+		MongoCollection<Document> col = this.db.getCollection("scores");		
+		Document doc = col.find(eq("type", "tfidf")).first();
+		
+		this.minScore = doc.getDouble("min");
+		return this.minScore;
+	}
+	
+	public Double getMaxScore(){
+		if(this.maxScore > -1.0)
+			return this.maxScore;
+		
+		MongoCollection<Document> col = this.db.getCollection("scores");		
+		Document doc = col.find(eq("type", "tfidf")).first();
+		
+		this.maxScore = doc.getDouble("max");
+		return this.maxScore;
+	}
     
     public void cleanup() {
     }

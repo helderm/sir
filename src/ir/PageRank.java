@@ -7,9 +7,10 @@
 package ir;
 
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.io.*;
 
-public class PageRank{
+public class PageRank implements Callable<ArrayList<CorpusDocument>>{
 
     /**  
      *   Maximal number of documents. We're assuming here that we
@@ -36,6 +37,11 @@ public class PageRank{
      *   Mapping from document numbers to document names
      */
     String[] docName = new String[MAX_NUMBER_OF_DOCS];
+    
+    /**
+     *   Mapping from document numbers to document titles
+     */
+    String[] docTitle = new String[MAX_NUMBER_OF_DOCS];
 
     /**  
      *   A memory-efficient representation of the transition matrix.
@@ -60,6 +66,9 @@ public class PageRank{
      */
     int numberOfSinks = 0;
 
+	private String linksFilename;
+	private String titlesFilename;
+
     /**
      *   The probability that the surfer will be bored, stop
      *   following links, and take a random jump somewhere.
@@ -82,10 +91,9 @@ public class PageRank{
     /* --------------------------------------------- */
 
 
-    public PageRank( String filename ) throws Exception {
-	int noOfDocs = readDocs( filename );
-	computeTransitionProbabilities( noOfDocs );
-	computePageRank( noOfDocs );
+    public PageRank( String linksFilename, String titlesFilename ){
+    	this.linksFilename = linksFilename;
+    	this.titlesFilename = titlesFilename;
     }
 
 
@@ -151,6 +159,22 @@ public class PageRank{
 		if ( out[i] == 0 )
 		    numberOfSinks++;
 	    }
+	    
+	    // get doc titles from file
+	    Integer numDocs = 0;
+	    in = new BufferedReader( new FileReader( this.titlesFilename ));
+	    while ((line = in.readLine()) != null && numDocs<MAX_NUMBER_OF_DOCS ){
+			String[] aux = line.split( ";" );
+			String docName = aux[0];
+			String docTitle = aux[1];
+			if(this.docNumber.containsKey(docName) == false){
+				System.err.println("Unknown doc name found! = " + docName);
+				continue;
+			}	
+			Integer docNumber = this.docNumber.get(docName);
+			this.docTitle[docNumber] = docTitle;
+			numDocs++;
+	    }
 	}
 	catch ( FileNotFoundException e ) {
 	    System.err.println( "File " + filename + " not found!" );
@@ -198,25 +222,26 @@ public class PageRank{
     		Double totalLinkProb = linkProb * (docLinks.size());
     		
     		if(almostEqual(1.0, totalBoredProb + totalLinkProb, 0.000001) == false)
-    			throw new Exception("Assertion failed!");
+    			throw new Exception("Assertion failed! totalBoredProb + totalLinkProb = "+ (totalBoredProb + totalLinkProb));
     	}
     	
     }
 
 
 
-    private void computePageRank(Integer numberOfDocs) throws Exception {
-		ArrayList<PostingsEntry> docs = new ArrayList<PostingsEntry>(numberOfDocs);
+    private ArrayList<CorpusDocument> computePageRank(Integer numberOfDocs) throws Exception {
+		ArrayList<CorpusDocument> docs = new ArrayList<CorpusDocument>(numberOfDocs);
 		ArrayList<Double> currState = new ArrayList<Double>(numberOfDocs);
 		Integer iter = 0;
 		
 		// initial state prob
-		for(Integer docId = 0; docId < numberOfDocs; docId++){
-			PostingsEntry pe = new PostingsEntry();
-			pe.docID = docId;
-			pe.score = 0.0;
-			docs.add(pe);
-			currState.add(docId, 0.0);
+		for(Integer did = 0; did < numberOfDocs; did++){
+			CorpusDocument doc = new CorpusDocument();
+			doc.did = Integer.getInteger(this.docName[did]);
+			doc.name = this.docTitle[did];
+			doc.rank = 0.0;
+			docs.add(doc);
+			currState.add(did, 0.0);
 		}
 		currState.set(0, 1.0);
 		
@@ -241,7 +266,7 @@ public class PageRank{
 						
 					sum += currStateProb * transProb;
 				}
-				docs.get(i).score = sum;
+				docs.get(i).rank = sum;
 				totalSum += sum;				
 			}
 			
@@ -251,9 +276,10 @@ public class PageRank{
 				
 			// copy the new state to the current state
 			Double diff = 0.0; 
-			for(PostingsEntry doc : docs){
-				diff += Math.abs(doc.score - currState.get(doc.docID));
-				currState.set(doc.docID, doc.score);
+			for(Integer i=0; i<docs.size(); i++){
+				CorpusDocument doc = docs.get(i);
+				diff += Math.abs(doc.rank - currState.get(i));
+				currState.set(i, doc.rank);
 			}
 			
 			// break if the state did not change much between iterations
@@ -264,16 +290,16 @@ public class PageRank{
 			System.out.println("Iteration " + iter + ": diff = " + diff);
 		}
     	
-		Collections.sort(docs, PostingsEntry.SCORE_ORDER);
-		Integer count = 50;
-		for(PostingsEntry pe : docs){
-			System.out.println("doc [" + this.docName[pe.docID] + "] = ["+ pe.score +"]");
+		Collections.sort(docs);
+		/*Integer count = 50;
+		for(CorpusDocument doc : docs){
+			System.out.println("doc [" + this.docName[doc.did] + "] = ["+ doc.rank +"]");
 			if(count == 0)
 				break;
 			count--;
-		}
+		}*/
 		
-    	System.err.println("Finished!");
+    	return docs;
 		
 	}
     
@@ -281,16 +307,30 @@ public class PageRank{
     /* --------------------------------------------- */
 
 
-    public static void main( String[] args ) throws Exception {
-	if ( args.length != 1 ) {
+    private String getDocumentName(Integer did) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+
+	public static void main( String[] args ) throws Exception {
+	if ( args.length != 2 ) {
 	    System.err.println( "Please give the name of the link file" );
 	}
 	else {
-	    new PageRank( args[0] );
+	    new PageRank( args[0] , args[1]).call();
 	}
     }
     
     public boolean almostEqual(double a, double b, double eps){
     	return Math.abs(a-b)<eps;
     }
+
+
+	@Override
+	public ArrayList<CorpusDocument> call() throws Exception {
+		int noOfDocs = readDocs( linksFilename );
+		computeTransitionProbabilities( noOfDocs );
+		return computePageRank( noOfDocs );
+	}
 }

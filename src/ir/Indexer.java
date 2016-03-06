@@ -17,9 +17,11 @@ import java.io.FileReader;
 import java.io.StringReader;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import org.apache.pdfbox.cos.COSDocument;
 import org.apache.pdfbox.pdfparser.*;
@@ -36,6 +38,11 @@ import com.mongodb.client.MongoDatabase;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 
 /**
  *   Processes a directory structure and indexes all PDF and text files.
@@ -50,6 +57,8 @@ public class Indexer {
 	private MongoClient client;
 	private MongoDatabase db;
 	private Options opt;
+
+	private ExecutorService worker;
 
     /* ----------------------------------------------- */
 
@@ -84,7 +93,8 @@ public class Indexer {
     	this.db = client.getDatabase("findr");	
     	this.opt = opt;
     	this.corpus = new Corpus(this.db, this.opt);
-    	this.index = new HashedIndex(this.db, this.opt);
+    	this.index = new HashedIndex(this.db, this.corpus, this.opt);
+    	this.worker = Executors.newFixedThreadPool(1);
     }
 
 
@@ -96,6 +106,10 @@ public class Indexer {
      */
     public void buildIndex(File f){    	
     	
+    	//spwan the pagerank calculation thread
+    	PageRank pr = new PageRank("data/pagerank/linksDavis.txt", "data/pagerank/articleTitles.txt");
+    	Future<ArrayList<CorpusDocument>> future = this.worker.submit(pr);
+    	
     	// parse the files and build the index
     	processFiles(f);
     	
@@ -103,47 +117,25 @@ public class Indexer {
 	    for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
 	    	((HashedIndex)this.index).savePostings(map.getKey(), map.getValue());
     	} 
-	    this.index = new HashedIndex(this.db, this.opt);	    
+	    this.index = new HashedIndex(this.db, this.corpus, this.opt);	    
 
     	// calculate the tf-idf scores of every term-document pair
-    	if(this.opt.offlineTfIdf)
-    		calculateScores();
+   		((HashedIndex)this.index).calculateScores();
     		
     	Options opt = this.opt;
     	opt.recreateIndex = false;
-    }
-    
-	/**
-	 * Calculate the TF-IDF scores for every term in the db
-	 */
-    private void calculateScores() {
-		
-		MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
-    	MongoCursor<IndexEntry> it = idxCol.find().iterator();
-
-    	HashSet<String> updatedTerms = new HashSet<>();
     	
-    	// for every term in the db
-    	while(it.hasNext()){
-    		IndexEntry ie = it.next();        		
-    		
-    		if(updatedTerms.contains(ie.token))
-    			continue;    		
-    		
-    		PostingsList postings = ((HashedIndex)this.index).getPostings(ie.token);
-    		
-    		Double idf = this.corpus.idf(postings);
-    		for(PostingsEntry pe : postings){
-    			CorpusDocument doc = this.corpus.getDocument(pe.docID);
-    			pe.score = this.corpus.tf(pe) * idf;
-    			pe.score /= doc.lenght;    			
-    		}
-    		
-    		((HashedIndex)this.index).savePostings(ie.token, postings);
-    		updatedTerms.add(ie.token);
-    	}
-
-	}
+    	// update the docs with their pageranks
+    	try { 
+			ArrayList<CorpusDocument> docs = future.get();
+			System.out.println("Pagerank succesful! Docs fetched = "+docs.size());
+			this.corpus.savePageranks(docs);
+		} catch (Exception e) {
+			System.err.println("Pagerank failed!");
+			e.printStackTrace();
+		} 
+    	
+    }
 
 	/**
      *  Tokenizes and indexes the file @code{f}. If @code{f} is a directory,
@@ -164,10 +156,12 @@ public class Indexer {
 		//System.err.println( "Indexing " + f.getPath() );
 		// First register the document and get a docID
 		CorpusDocument doc = corpus.getDocument();
-		doc.name = f.getPath();
-
-		//index.docIDs.put( "" + docID, f.getPath() );
-		//index.addDocID( "" + docID, f.getPath() );
+		Integer idx1, idx2;
+		idx1 = f.getPath().lastIndexOf('/')+1;
+		idx2 = f.getPath().length() - 2;
+		doc.name = f.getPath().substring(idx1, idx2);
+		doc.rank = 0.0;
+		
 		try {
 		    //  Read the first few bytes of the file to see if it is 
 		    // likely to be a PDF 
@@ -244,10 +238,12 @@ public class Indexer {
     	
     	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
     	MongoCollection<CorpusDocument> docCol = this.db.getCollection("docs", CorpusDocument.class);
+    	MongoCollection<Document> scCol = this.db.getCollection("scores");
     	
     	// clean the db
     	idxCol.drop();
     	docCol.drop();
+    	scCol.drop();
     	
     	// create indexes
     	idxCol.createIndex(new Document("term", 1));
