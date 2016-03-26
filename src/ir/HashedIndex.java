@@ -217,7 +217,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		case Index.PAGERANK:
     			return rankedQuery(termsPostings, 0.0, 1.0);
     		case Index.COMBINATION:
-    			return rankedQuery(termsPostings, 0.5, 0.5);
+    			return rankedQuery(termsPostings, 0.65, 0.35);
     		case Index.TF_IDF:
     		default:
     			return rankedQuery(termsPostings, 1.0, 0.0);

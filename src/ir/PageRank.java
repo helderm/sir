@@ -8,7 +8,17 @@ package ir;
 
 import java.util.*;
 import java.util.concurrent.Callable;
+
+import org.bson.codecs.configuration.CodecRegistries;
+import org.bson.codecs.configuration.CodecRegistry;
+
+import com.mongodb.MongoClient;
+import com.mongodb.MongoClientOptions;
+import com.mongodb.client.MongoDatabase;
+
 import java.io.*;
+import java.lang.reflect.Array;
+import java.nio.file.Files;
 
 public class PageRank implements Callable<ArrayList<CorpusDocument>>{
 
@@ -69,6 +79,10 @@ public class PageRank implements Callable<ArrayList<CorpusDocument>>{
 	private String linksFilename;
 	private String titlesFilename;
 
+	private static final int SAVE_ITERS = 1000;
+	
+	private int type;
+
     /**
      *   The probability that the surfer will be bored, stop
      *   following links, and take a random jump somewhere.
@@ -86,16 +100,27 @@ public class PageRank implements Callable<ArrayList<CorpusDocument>>{
      *   of whether the transistion probabilities converge or not.
      */
     final static int MAX_NUMBER_OF_ITERATIONS = 1000;
+    
+    final static int STD_PR = 0;
+    final static int MC1_PR = 1;
+    final static int MC2_PR = 2;
+    final static int MC3_PR = 3;
+    final static int MC4_PR = 4;
+    final static int MC5_PR = 5;
 
     
     /* --------------------------------------------- */
 
-
-    public PageRank( String linksFilename, String titlesFilename ){
+    public PageRank( String linksFilename, String titlesFilename, int type ){
     	this.linksFilename = linksFilename;
     	this.titlesFilename = titlesFilename;
+    	this.type = type;
     }
-
+    
+    public PageRank( String linksFilename, String titlesFilename ){
+    	this(linksFilename, titlesFilename, STD_PR);
+    }
+    
 
     /* --------------------------------------------- */
 
@@ -291,34 +316,527 @@ public class PageRank implements Callable<ArrayList<CorpusDocument>>{
 		}
     	
 		Collections.sort(docs);
-		/*Integer count = 50;
+		Integer count = 50;
 		for(CorpusDocument doc : docs){
 			System.out.println("doc [" + this.docName[doc.did] + "] = ["+ doc.rank +"]");
 			if(count == 0)
 				break;
 			count--;
-		}*/
+		}
+		System.out.println("-------------------");
 		
     	return docs;
 		
 	}
     
 
-    /* --------------------------------------------- */
+	private ArrayList<CorpusDocument> computePageRankMonteCarlo1(int noOfDocs, int noWalks, ArrayList<CorpusDocument> stddocs) throws Exception {
+		ArrayList<CorpusDocument> docs = new ArrayList<CorpusDocument>(noOfDocs);
+		Hashtable<Integer, Integer> counts = new Hashtable<Integer, Integer>(noOfDocs);
+		
+		Random rand = new Random();
+		
+		for(Integer wlk=0; wlk<noWalks; wlk++){			
+				
+			// get a random doc
+			Integer did = rand.nextInt(noOfDocs);
+			
+			while(true){
+				
+				// until i should stop (p(1-c))
+				if(rand.nextDouble() < BORED)
+					break;
+						
+				// follow one of the links with eq probability
+				Hashtable<Integer, Double> probs = link.get(did);
+				if(probs == null){
+					// it is a sink! jump!
+					did = rand.nextInt(noOfDocs);
+					continue;
+				}
+				
+				// jump to one of the links
+				Integer linkIdx = rand.nextInt(probs.size());
+				List<Integer> keys = new ArrayList<Integer>(probs.keySet());
+				did = keys.get(linkIdx);
+			}
+			
+			Integer count = counts.get(did);
+			if(count == null)
+				count = 0;
 
+			counts.put(did, ++count);
+			
+			if( wlk > 0 && wlk % SAVE_ITERS == 0){
+				docs.clear();
+				for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+				    Integer didd = entry.getKey();
+				    Integer ccount = entry.getValue();
+				
+				    CorpusDocument doc = new CorpusDocument();
+				    doc.did = didd;
+				    doc.rank = (double)ccount / (double)wlk; 
+				    docs.add(doc);
+				 
+				}
+				
+				saveSquaredErrors(docs, stddocs, "mc1top.txt", 0);
+				saveSquaredErrors(docs, stddocs, "mc1bot.txt", 1);
+				docs.clear();
+			}
+			
+		}
+		
+		Double probTotal = 0.0;
+		for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+		    Integer did = entry.getKey();
+		    Integer count = entry.getValue();
+		
+		    CorpusDocument doc = new CorpusDocument();
+		    doc.did = did;
+		    doc.rank = (double)count / (double)noWalks; 
+		    docs.add(doc);
+		    probTotal += doc.rank;
+		}
+		
+		if(almostEqual(1.0, probTotal, 0.000001) == false)
+			throw new Exception("Assertion failed! probTotal = "+ probTotal);
+		
+		Collections.sort(docs);
 
-    private String getDocumentName(Integer did) {
-		// TODO Auto-generated method stub
-		return null;
+		//printTopDocs(docs, 50);
+		
+		//saveDocsFile(docs, 50, 1);
+		return docs;		
+	}
+    
+	private ArrayList<CorpusDocument> computePageRankMonteCarlo2(int noOfDocs, int walksPerDoc, ArrayList<CorpusDocument> stddocs) throws Exception {
+		Hashtable<Integer, Integer> counts = new Hashtable<Integer, Integer>(noOfDocs);
+		ArrayList<CorpusDocument> docs = new ArrayList<CorpusDocument>(noOfDocs);
+		
+		Random rand = new Random();
+		
+		Integer numWalks = 0;
+		for(Integer wlk=0; wlk<walksPerDoc; wlk++){
+			for(Integer stdid=0; stdid<noOfDocs; stdid++){						
+				
+				Integer did = stdid;
+				while(true){					
+					// until i should stop (p(1-c))
+					if(rand.nextDouble() < BORED)
+						break;
+							
+					// follow one of the links with eq probability
+					Hashtable<Integer, Double> probs = link.get(did);
+					if(probs == null){
+						// it is a sink! jump!
+						did = rand.nextInt(noOfDocs);
+						continue;
+					}
+					
+					// jump to one of the links
+					Integer linkIdx = rand.nextInt(probs.size());
+					List<Integer> keys = new ArrayList<Integer>(probs.keySet());
+					did = keys.get(linkIdx);
+				}
+				
+				Integer count = counts.get(did);
+				if(count == null)
+					count = 0;
+	
+				counts.put(did, ++count);
+				
+				numWalks++;
+				if( numWalks > 0 && numWalks % SAVE_ITERS == 0){
+					docs.clear();
+					for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+					    Integer didd = entry.getKey();
+					    Integer ccount = entry.getValue();
+					
+					    CorpusDocument doc = new CorpusDocument();
+					    doc.did = didd;
+					    doc.rank = (double)ccount / (double)(numWalks); 
+					    docs.add(doc);
+					 
+					}
+					
+					saveSquaredErrors(docs, stddocs, "mc2top.txt", 0);
+					saveSquaredErrors(docs, stddocs, "mc2bot.txt", 1);
+					docs.clear();
+				}
+				
+				
+			}		
+		}
+		
+		Double probTotal = 0.0;
+		for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+		    Integer did = entry.getKey();
+		    Integer count = entry.getValue();
+		
+		    CorpusDocument doc = new CorpusDocument();
+		    doc.did = did;
+		    doc.rank = (double)count / (double)(noOfDocs * walksPerDoc); 
+		    docs.add(doc);
+		    probTotal += doc.rank;
+		}
+		
+		if(almostEqual(1.0, probTotal, 0.000001) == false)
+			throw new Exception("Assertion failed! probTotal = "+ probTotal);
+		
+		
+		Collections.sort(docs);
+
+		//printTopDocs(docs, 50);		
+		return docs;		
 	}
 
+	private ArrayList<CorpusDocument> computePageRankMonteCarlo3(int noOfDocs, Integer walksPerDoc, ArrayList<CorpusDocument> stddocs) throws Exception {
+		Hashtable<Integer, Integer> counts = new Hashtable<Integer, Integer>(noOfDocs);
+		ArrayList<CorpusDocument> docs = new ArrayList<CorpusDocument>(noOfDocs);
+		
+		Random rand = new Random();
+		Integer totalSteps = 0;
+		Integer numWalks = 0;		
+		
+		for(Integer wlk=0; wlk<walksPerDoc; wlk++){
+			for(Integer stdid=0; stdid<noOfDocs; stdid++){						
+				
+				Integer did = stdid;
+				while(true){					
+					totalSteps += 1;
+					
+					Integer count = counts.get(did);
+					if(count == null)
+						count = 0;
+		
+					counts.put(did, ++count);
+					
+					// until i should stop (p(1-c))
+					if(rand.nextDouble() < BORED)
+						break;
+							
+					// follow one of the links with eq probability
+					Hashtable<Integer, Double> probs = link.get(did);
+					if(probs == null){
+						// it is a sink! jump!
+						did = rand.nextInt(noOfDocs);
+						continue;
+					}
+					
+					// jump to one of the links
+					Integer linkIdx = rand.nextInt(probs.size());
+					List<Integer> keys = new ArrayList<Integer>(probs.keySet());
+					did = keys.get(linkIdx);
+				}
+				
+				numWalks++;
+				if( numWalks > 0 && numWalks % SAVE_ITERS == 0){
+					docs.clear();
+					for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+					    Integer didd = entry.getKey();
+					    Integer ccount = entry.getValue();
+					
+					    CorpusDocument doc = new CorpusDocument();
+					    doc.did = didd;
+					    doc.rank = (double)ccount / (double)(totalSteps); 
+					    docs.add(doc);
+					 
+					}
+					
+					saveSquaredErrors(docs, stddocs, "mc3top.txt", 0);
+					saveSquaredErrors(docs, stddocs, "mc3bot.txt", 1);
+					docs.clear();
+				}
+
+			}		
+		}
+		
+		Double probTotal = 0.0;
+		for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+		    Integer did = entry.getKey();
+		    Integer count = entry.getValue();
+		
+		    CorpusDocument doc = new CorpusDocument();
+		    doc.did = did;
+		    doc.rank = (double)count / (double)totalSteps; 
+		    docs.add(doc);
+		    probTotal += doc.rank;
+		}
+		
+		if(almostEqual(1.0, probTotal, 0.000001) == false)
+			throw new Exception("Assertion failed! probTotal = "+ probTotal);
+		
+		
+		Collections.sort(docs);
+
+		//printTopDocs(docs, 50);
+		return docs;		
+	}
+
+
+	private ArrayList<CorpusDocument> computePageRankMonteCarlo4(int noOfDocs, Integer walksPerDoc, ArrayList<CorpusDocument> stddocs) throws Exception {
+		Hashtable<Integer, Integer> counts = new Hashtable<Integer, Integer>(noOfDocs);
+		ArrayList<CorpusDocument> docs = new ArrayList<CorpusDocument>(noOfDocs);
+		
+		Random rand = new Random();
+		Integer totalSteps = 0;
+		Integer numWalks = 0;
+		
+		for(Integer wlk=0; wlk<walksPerDoc; wlk++){
+			for(Integer stdid=0; stdid<noOfDocs; stdid++){						
+				
+				Integer did = stdid;
+				while(true){					
+					totalSteps += 1;
+					
+					Integer count = counts.get(did);
+					if(count == null)
+						count = 0;
+		
+					counts.put(did, ++count);
+					
+					// until i should stop (p(1-c))
+					if(rand.nextDouble() < BORED)
+						break;
+							
+					// follow one of the links with eq probability
+					Hashtable<Integer, Double> probs = link.get(did);
+					if(probs == null){
+						// it is a dangling node! terminate!
+						break;
+					}
+					
+					// jump to one of the links
+					Integer linkIdx = rand.nextInt(probs.size());
+					List<Integer> keys = new ArrayList<Integer>(probs.keySet());
+					did = keys.get(linkIdx);
+				}
+
+				numWalks++;
+				if( numWalks > 0 && numWalks % SAVE_ITERS == 0){
+					docs.clear();
+					for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+					    Integer didd = entry.getKey();
+					    Integer ccount = entry.getValue();
+					
+					    CorpusDocument doc = new CorpusDocument();
+					    doc.did = didd;
+					    doc.rank = (double)ccount / (double)(totalSteps); 
+					    docs.add(doc);
+					 
+					}
+					
+					saveSquaredErrors(docs, stddocs, "mc4top.txt", 0);
+					saveSquaredErrors(docs, stddocs, "mc4bot.txt", 1);
+					docs.clear();
+				}
+				
+			}		
+		}
+		
+		Double probTotal = 0.0;
+		for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+		    Integer did = entry.getKey();
+		    Integer count = entry.getValue();
+		
+		    CorpusDocument doc = new CorpusDocument();
+		    doc.did = did;
+		    doc.rank = (double)count / (double)totalSteps; 
+		    docs.add(doc);
+		    probTotal += doc.rank;
+		}
+		
+		if(almostEqual(1.0, probTotal, 0.000001) == false)
+			throw new Exception("Assertion failed! probTotal = "+ probTotal);
+		
+		
+		Collections.sort(docs);
+
+		//printTopDocs(docs, 50);
+		return docs;
+	}	
+
+	private ArrayList<CorpusDocument> computePageRankMonteCarlo5(int noOfDocs, Integer noWalks, ArrayList<CorpusDocument> stddocs) throws Exception {
+		Hashtable<Integer, Integer> counts = new Hashtable<Integer, Integer>(noOfDocs);
+		ArrayList<CorpusDocument> docs = new ArrayList<CorpusDocument>(noOfDocs);
+		
+		Random rand = new Random();
+		Integer totalSteps = 0;
+		Integer numWalks = 0;
+		
+		for(Integer wlk=0; wlk<noWalks; wlk++){
+			
+			Integer did = rand.nextInt(noOfDocs);
+			while(true){					
+				totalSteps += 1;
+				
+				Integer count = counts.get(did);
+				if(count == null)
+					count = 0;
+	
+				counts.put(did, ++count);
+				
+				// until i should stop (p(1-c))
+				if(rand.nextDouble() < BORED)
+					break;
+						
+				// follow one of the links with eq probability
+				Hashtable<Integer, Double> probs = link.get(did);
+				if(probs == null){
+					// it is a dangling node! terminate!
+					break;
+				}
+				
+				// jump to one of the links
+				Integer linkIdx = rand.nextInt(probs.size());
+				List<Integer> keys = new ArrayList<Integer>(probs.keySet());
+				did = keys.get(linkIdx);
+
+				numWalks++;
+				if( wlk > 0 && wlk % SAVE_ITERS == 0){
+					docs.clear();
+					for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+					    Integer didd = entry.getKey();
+					    Integer ccount = entry.getValue();
+					
+					    CorpusDocument doc = new CorpusDocument();
+					    doc.did = didd;
+					    doc.rank = (double)ccount / (double)(totalSteps); 
+					    docs.add(doc);
+					 
+					}
+					
+					saveSquaredErrors(docs, stddocs, "mc5top.txt", 0);
+					saveSquaredErrors(docs, stddocs, "mc5bot.txt", 1);
+					docs.clear();
+				}
+				
+			}		
+		}
+		
+		Double probTotal = 0.0;
+		for (Map.Entry<Integer, Integer> entry : counts.entrySet()) {
+		    Integer did = entry.getKey();
+		    Integer count = entry.getValue();
+		
+		    CorpusDocument doc = new CorpusDocument();
+		    doc.did = did;
+		    doc.rank = (double)count / (double)totalSteps; 
+		    docs.add(doc);
+		    probTotal += doc.rank;
+		}
+		
+		if(almostEqual(1.0, probTotal, 0.000001) == false)
+			throw new Exception("Assertion failed! probTotal = "+ probTotal);
+		
+		
+		Collections.sort(docs);
+
+		//printTopDocs(docs, 50);
+		return docs;
+	}		
+	
+	private void printTopDocs(ArrayList<CorpusDocument> docs, Integer maxDocs){
+		Integer count = maxDocs;
+		for(CorpusDocument doc : docs){
+			System.out.println("doc [" + this.docName[doc.did] + "] = ["+ doc.rank +"]");
+			if(count == 0)
+				break;
+			count--;
+		}	
+	}
+	
+	
+	
+	private void saveDocsFile(ArrayList<CorpusDocument> mcdocs, ArrayList<CorpusDocument> docs, Integer maxDocs, Integer type, int N) throws Exception{
+		String filename = "mc" + type + ".txt";
+		PrintWriter writer = new PrintWriter(new BufferedWriter(new FileWriter(filename, true)));
+		Double error = 0.0;
+		
+		HashMap<Integer, CorpusDocument> hash = new HashMap<>();
+		for(CorpusDocument doc: mcdocs)
+			hash.put(doc.did, doc);
+		
+		
+		Boolean converged = true;
+		Integer count = maxDocs;
+		for(CorpusDocument doc : docs){
+			
+			CorpusDocument mcdoc = hash.get(doc.did);
+			if(mcdoc == null){
+				error += Math.pow(Math.abs(0.0 - doc.rank), 2);
+				count--;
+				continue;
+			}
+				
+			if(Math.abs(doc.rank - mcdoc.rank) > 0.001)
+				converged = false;
+			
+			error += Math.pow(Math.abs(doc.rank - mcdoc.rank), 2);
+			count--;
+			
+			if(count == 0)
+				break;
+		}
+		
+		/*if(converged)
+			System.out.println("*** N = " + N + ", CONVERGED!");
+		else
+			System.out.println("N = " + N + ", didnt converge...");*/
+		
+		writer.println(error);
+		writer.close();
+	}
+	
+	private void saveSquaredErrors(ArrayList<CorpusDocument> mcdocs, ArrayList<CorpusDocument> docs, String filename, int direction) throws Exception{
+		ArrayList<CorpusDocument> newmcdocs = new ArrayList<>(mcdocs);
+		ArrayList<CorpusDocument> newdocs = new ArrayList<>(docs);
+		PrintWriter writer = new PrintWriter(new BufferedWriter(new FileWriter(filename, true)));
+		Double error = 0.0;
+		
+		if(direction == 0){
+			Collections.sort(newmcdocs);
+			Collections.sort(newdocs);
+		}else{
+			Collections.sort(newmcdocs, CorpusDocument.RANK_DESC);
+			Collections.sort(newdocs, CorpusDocument.RANK_DESC);			
+		}
+
+		HashMap<Integer, CorpusDocument> hash = new HashMap<>();
+		for(CorpusDocument doc: mcdocs)
+			hash.put(doc.did, doc);
+
+		Integer count = 50;
+		for(CorpusDocument doc : newdocs){
+			
+			CorpusDocument mcdoc = hash.get(doc.did);
+			if(mcdoc == null){
+				error += Math.pow(Math.abs(0.0 - doc.rank), 2);
+				count--;
+				continue;
+			}
+			
+			error += Math.pow(Math.abs(doc.rank - mcdoc.rank), 2);
+			count--;
+			
+			if(count == 0)
+				break;
+		}
+		
+		writer.println(error);
+		writer.close();		
+		
+	}
+	
+	/* --------------------------------------------- */
 
 	public static void main( String[] args ) throws Exception {
 	if ( args.length != 2 ) {
 	    System.err.println( "Please give the name of the link file" );
 	}
 	else {
-	    new PageRank( args[0] , args[1]).call();
+	    new PageRank( args[0] , args[1], STD_PR).call();
 	}
     }
     
@@ -330,7 +848,111 @@ public class PageRank implements Callable<ArrayList<CorpusDocument>>{
 	@Override
 	public ArrayList<CorpusDocument> call() throws Exception {
 		int noOfDocs = readDocs( linksFilename );
-		computeTransitionProbabilities( noOfDocs );
-		return computePageRank( noOfDocs );
+		Integer M = 2;
+		Integer N = noOfDocs * M;
+		ArrayList<CorpusDocument> stdprDocs;
+		ArrayList<CorpusDocument> docs = new ArrayList<>();
+		
+		switch(this.type){
+		case MC1_PR:
+				
+			stdprDocs = loadPageRank("pr.ser");
+			new File("mc1top.txt").delete();
+			new File("mc1bot.txt").delete();
+						
+			//for(Integer n=noOfDocs; n<=N; n += noOfDocs){				
+			//	docs.clear();
+			docs = computePageRankMonteCarlo1( noOfDocs, N , stdprDocs);
+				//saveSquaredErrors(docs, stdprDocs, "mc1.txt", 0);
+				//saveDocsFile(docs, stdprDocs, 50, this.type, n);
+			//}
+			
+			printTopDocs(docs, 50);
+			
+			return docs;
+		case MC2_PR:
+					
+			stdprDocs = loadPageRank("pr.ser");
+			new File("mc2top.txt").delete();
+			new File("mc2bot.txt").delete();
+			
+			//for(Integer m=1; m<=M; m += 1){				
+			//	docs.clear();
+			docs = computePageRankMonteCarlo2(noOfDocs, M, stdprDocs);
+				//saveDocsFile(docs, stdprDocs, 50, this.type, m);
+			//}
+			
+			printTopDocs(docs, 50);
+			
+			return docs;
+		case MC3_PR:
+			
+			stdprDocs = loadPageRank("pr.ser");
+			new File("mc3top.txt").delete();
+			new File("mc3bot.txt").delete();
+			
+			//for(Integer m=1; m<=M; m += 1){				
+			docs = computePageRankMonteCarlo3(noOfDocs, M, stdprDocs);
+			//saveDocsFile(docs, stdprDocs, 50, this.type, m);
+			//}
+			
+			printTopDocs(docs, 50);
+			
+			return docs;
+		case MC4_PR:
+			
+			stdprDocs = loadPageRank("pr.ser");
+			new File("mc4top.txt").delete();
+			new File("mc4bot.txt").delete();
+			
+			docs = computePageRankMonteCarlo4(noOfDocs, M, stdprDocs);
+			//saveDocsFile(docs, stdprDocs, 50, this.type, m);
+
+			
+			printTopDocs(docs, 50);
+			
+			return docs;
+		case MC5_PR:
+			
+			stdprDocs = loadPageRank("pr.ser");
+			new File("mc5top.txt").delete();
+			new File("mc5bot.txt").delete();
+				
+			docs = computePageRankMonteCarlo5(noOfDocs, N, stdprDocs);
+			//saveDocsFile(docs, stdprDocs, 50, this.type, m);
+			
+			
+			printTopDocs(docs, 50);
+			
+			return docs;
+		
+		case STD_PR:
+		default:
+			computeTransitionProbabilities( noOfDocs );
+			docs = computePageRank( noOfDocs );
+			printTopDocs(docs, 50);
+			new File("pr.ser").delete();			
+			savePageRank(docs, "pr.ser");
+			
+			return docs;
+		}
 	}
+
+	private ArrayList<CorpusDocument> loadPageRank(String filename) throws Exception {
+        FileInputStream fis = new FileInputStream(filename);
+        ObjectInputStream ois = new ObjectInputStream(fis);
+        ArrayList<CorpusDocument> docs = (ArrayList) ois.readObject();
+        ois.close();
+        fis.close();
+        return docs;
+	}
+
+	public void savePageRank(ArrayList<CorpusDocument> docs, String filename) throws IOException{
+		FileOutputStream fos= new FileOutputStream(filename);
+        ObjectOutputStream oos= new ObjectOutputStream(fos);
+        oos.writeObject(docs);
+        oos.close();
+        fos.close();
+	}
+
 }
