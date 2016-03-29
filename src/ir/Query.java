@@ -34,6 +34,39 @@ public class Query {
 	}    
     }
     
+    public Query( String queryString, Indexer indexer  ) {
+		StringTokenizer tok = new StringTokenizer( queryString );
+		Double querySize = 0.0;
+		
+		while ( tok.hasMoreTokens() ) {
+		    terms.add( tok.nextToken() );
+		    weights.add( new Double(1) );
+		    querySize += 1.0;
+		}   
+		
+	    // recalculate the query weights as tf-idf scores
+	    LinkedList<String> newQueryTerms = new LinkedList<String>();
+	    LinkedList<Double> newQueryWeights = new LinkedList<Double>();
+	    
+	    int i;
+	    for(i=0; i<this.terms.size(); i++){
+	    	String term = this.terms.get(i);
+	    	Double tf = this.weights.get(i);
+	    	
+    		PostingsList postings = indexer.index.getPostings(term);
+	    		
+    		Double idf = indexer.corpus.idf(postings);
+    		
+    		// set the new score for the query term
+    		Double score = tf * idf;
+    		score = (score / Math.sqrt(querySize));    		
+    		
+    		newQueryWeights.add(score);
+    	}
+
+	    weights = newQueryWeights;
+    }    
+    
     /**
      *  Returns the number of terms
      */
@@ -58,9 +91,9 @@ public class Query {
     	// results contain the ranked list from the current search
     	// docIsRelevant contains the users feedback on which of the 10 first hits are relevant
 	
-	    double alpha = 0.5;
-	    double beta = 0.5;
-	    int maxNewTerms = 20;	    	
+	    double alpha = 0.2;
+	    double beta = 0.8;
+	    int maxNewTerms = 10;	    	
 	    int i = 0;
 		
 	    // get the size of the query as if it were a doc
