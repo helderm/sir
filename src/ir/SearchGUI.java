@@ -225,7 +225,7 @@ public class SearchGUI extends JFrame {
 			// synchronized since we don't want to search at the same time we're indexing new files
 			// (this might corrupt the index).
 			synchronized ( indexLock ) {
-			    results = indexer.index.search( query, queryType, rankingType, structureType );
+			    results = indexer.index.search( query, Index.RELEVANCE_FEEDBACK_QUERY, rankingType, structureType );
 			}
 			buf.append( "\nSearch after relevance feedback:\n" );
 			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );

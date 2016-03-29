@@ -2,6 +2,7 @@ package ir;
 
 import java.io.Serializable;
 import java.util.Comparator;
+import java.util.LinkedList;
 
 import org.bson.types.ObjectId;
 
@@ -11,6 +12,8 @@ public class CorpusDocument implements Comparable<CorpusDocument>, Serializable{
 	public String name;
 	public Integer lenght;
 	public Double rank;
+	
+    public PostingsTermsList terms = new PostingsTermsList();
 	
 	@Override
 	public int compareTo(CorpusDocument other) {

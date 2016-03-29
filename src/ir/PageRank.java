@@ -316,14 +316,14 @@ public class PageRank implements Callable<ArrayList<CorpusDocument>>{
 		}
     	
 		Collections.sort(docs);
-		Integer count = 50;
+		/*Integer count = 50;
 		for(CorpusDocument doc : docs){
 			System.out.println("doc [" + this.docName[doc.did] + "] = ["+ doc.rank +"]");
 			if(count == 0)
 				break;
 			count--;
 		}
-		System.out.println("-------------------");
+		System.out.println("-------------------");*/
 		
     	return docs;
 		
@@ -930,9 +930,9 @@ public class PageRank implements Callable<ArrayList<CorpusDocument>>{
 		default:
 			computeTransitionProbabilities( noOfDocs );
 			docs = computePageRank( noOfDocs );
-			printTopDocs(docs, 50);
+			//printTopDocs(docs, 50);
 			new File("pr.ser").delete();			
-			savePageRank(docs, "pr.ser");
+			//savePageRank(docs, "pr.ser");
 			
 			return docs;
 		}

@@ -108,27 +108,36 @@ public class Indexer {
     	
     	//spwan the pagerank calculation thread
     	PageRank pr = new PageRank("data/pagerank/linksDavis.txt", "data/pagerank/articleTitles.txt");
+    	
+    	System.out.println("Dispatching PageRank job...");
     	Future<ArrayList<CorpusDocument>> future = this.worker.submit(pr);
     	
     	// parse the files and build the index
+    	System.out.println("Processing files...");
     	processFiles(f);
     	
     	// export the remaining index entries and docs info
-	    for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
+	    System.out.println("Exporting remaining index postings to db...");
+    	for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
 	    	((HashedIndex)this.index).savePostings(map.getKey(), map.getValue());
     	} 
 	    this.index = new HashedIndex(this.db, this.corpus, this.opt);	    
 
     	// calculate the tf-idf scores of every term-document pair
+	    System.out.println("Calculating scores...");
    		((HashedIndex)this.index).calculateScores();
-    		
+
+   		// save all docs in the db
+    	this.corpus.saveDocuments();
+    	
+   		
     	Options opt = this.opt;
     	opt.recreateIndex = false;
     	
     	// update the docs with their pageranks
     	try { 
 			ArrayList<CorpusDocument> docs = future.get();
-			System.out.println("Pagerank succesful! Docs fetched = "+docs.size());
+			System.out.println("Updating ["+docs.size()+"] docs with their pageranks...");
 			this.corpus.savePageranks(docs);
 		} catch (Exception e) {
 			System.err.println("Pagerank failed!");
@@ -143,6 +152,7 @@ public class Indexer {
      */
     public void processFiles( File f ) {
 	// do not try to index fs that cannot be read
+    	
 	if ( f.canRead() ) {
 	    if ( f.isDirectory() ) {
 		String[] fs = f.list();
@@ -191,7 +201,7 @@ public class Indexer {
 		    }
 		    
 		    doc.lenght = offset;
-		    corpus.saveDocument(doc);
+		    corpus.insertDocument(doc);
 		    
 		    //index.docLengths.put( "" + docID, offset );
 		    //index.addDocLenght( "" + docID, offset );

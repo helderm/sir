@@ -20,8 +20,9 @@ public interface Index {
     /* Query types */
     public static final int INTERSECTION_QUERY = 0;
     public static final int PHRASE_QUERY = 1;
-    public static final int RANKED_QUERY = 2;
-	
+    public static final int RANKED_QUERY = 2;	
+    public static final int RELEVANCE_FEEDBACK_QUERY = 3;
+    
     /* Ranking types */
     public static final int TF_IDF = 0; 
     public static final int PAGERANK = 1; 

@@ -4,13 +4,15 @@ import static com.mongodb.client.model.Filters.eq;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 import org.bson.Document;
 
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 
-public class Corpus {
+public class Corpus implements Iterable<Map.Entry<Integer, CorpusDocument>>{
 	private Long size;
 	private LruCache<Integer, CorpusDocument> cache;
 	private MongoDatabase db;
@@ -21,10 +23,10 @@ public class Corpus {
     private Double maxRank = 0.0;
 	
 	public Corpus(MongoDatabase db, Options opt) {
-    	if(opt.cacheSize >= 0){    		
-    		this.cache = new LruCache<Integer,CorpusDocument>(opt.cacheSize);
-    	}else
-    		this.cache = new LruCache<Integer,CorpusDocument>();
+    	//if(opt.cacheSize >= 0){    		
+    	//	this.cache = new LruCache<Integer,CorpusDocument>(opt.cacheSize);
+    	//}else
+		this.cache = new LruCache<Integer,CorpusDocument>();
 
     	this.db = db; 
     	this.size = 0L;
@@ -50,13 +52,33 @@ public class Corpus {
     	return doc;
     }
     
-    public void saveDocument(CorpusDocument doc){
+    public void saveDocuments(){
     	MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);    	
-    	col.insertOne(doc);   	
-    	this.cache.put(doc.did, doc);
-    	this.size++;
+    	
+	    for(Map.Entry<Integer, CorpusDocument> map : this){
+	    	col.insertOne(map.getValue());
+    	} 
+    	
+		// find a doc with the same name in the db
+		/*CorpusDocument dbDoc = col.find(eq("did", doc.did)).first();
+		if(dbDoc == null){
+			
+	    	this.size++;
+		}else{
+			col.findOneAndReplace(eq("_id", dbDoc.id), doc);
+		}
+    	
+		this.cache.put(doc.did, doc);*/	
+
     }
 	
+    public void insertDocument(CorpusDocument doc){
+    	/** Add a document to the cache **/
+    	
+    	this.cache.put(doc.did, doc); 
+    	this.size = (long) this.cache.size();
+    }
+    
     public Long getSize(){
     	if(this.size > 0L)
     		return this.size;
@@ -132,5 +154,10 @@ public class Corpus {
 		this.maxRank = doc.rank;
 		return this.maxRank;
 	}
-    
+
+	@Override
+	public Iterator<Map.Entry<Integer, CorpusDocument>> iterator() {
+		return this.cache.entrySet().iterator();
+	}
+	
 }

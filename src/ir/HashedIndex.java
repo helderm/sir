@@ -186,9 +186,15 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 
     	// create term-postings list, and sort by increasing doc frequency
     	ArrayList<Query.TermPostings> termsPostings = new ArrayList<Query.TermPostings>();
-    	for(String term : query.terms){
+    	
+    	int i;
+    	for(i=0; i<query.terms.size(); i++){
+    		String term = query.terms.get(i);
+    		Double weight = query.weights.get(i);
+    		
     		Query.TermPostings tp = query.new TermPostings();
     		tp.term = term;
+    		tp.weight = weight;
     		tp.postings = getPostings(term);
     		termsPostings.add(tp);
     	}
@@ -222,6 +228,9 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		default:
     			return rankedQuery(termsPostings, 1.0, 0.0);
     		}
+    	
+    	case Index.RELEVANCE_FEEDBACK_QUERY:
+    		return cosineScore(termsPostings);    	
     	}  	
     	
     	return new PostingsList();
@@ -356,6 +365,27 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	
     }
     
+    public PostingsList cosineScore(ArrayList<Query.TermPostings> query){
+    	PostingsList answer = new PostingsList();
+    	
+    	// for each query term
+    	for(Query.TermPostings tp : query){
+    		
+    		// for each doc in the postings lists
+    		for(PostingsEntry pe : tp.postings){
+    			PostingsEntry ape = new PostingsEntry(pe);
+    			
+    			Double score = pe.score * tp.weight;
+    			ape.score = score;
+    			answer.add(ape);
+    		}
+    	}
+    	
+    	Collections.sort(answer.getList(), PostingsEntry.SCORE_ORDER);      	
+    	
+    	return answer;
+    }
+    
 	/**
 	 * Calculate the TF-IDF scores for every term in the db
 	 */
@@ -369,9 +399,12 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	Double maxScore = 0.0;
     	
     	// for every term in the db
+    	int counter = 0;
     	while(it.hasNext()){
     		IndexEntry ie = it.next();        		
     		
+    		// we may have same term in different docs, so we dont have to recalculate
+    		//  it again for the terms that we already did it
     		if(updatedTerms.contains(ie.token))
     			continue;    		
     		
@@ -380,8 +413,16 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		Double idf = this.corpus.idf(postings);
     		for(PostingsEntry pe : postings){
     			CorpusDocument doc = this.corpus.getDocument(pe.docID);
+    			
+    			// calculate the lenght normalized tf-idf score
     			pe.score = this.corpus.tf(pe) * idf;
-    			pe.score /= doc.lenght;    
+    			pe.score /= Math.sqrt(doc.lenght);    
+    			
+    			PostingsTermEntry pte = new PostingsTermEntry();
+    			pte.term = ie.token;
+    			pte.score = pe.score;    			
+    			doc.terms.add(pte);
+    			this.corpus.insertDocument(doc);
     			
     			if(pe.score < minScore)
     				minScore = pe.score;
@@ -391,9 +432,12 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		
     		savePostings(ie.token, postings);
     		updatedTerms.add(ie.token);
+    		
+    		if(++counter % 1000 == 0)
+    			System.out.println("[" + counter + "] terms processed...");
     	}
     	
-    	// save the special 
+    	// add the max min tfidf scores, for normalization    	
     	MongoCollection<Document> scCol = this.db.getCollection("scores");
     	Document score = new Document();
     	score.append("type", "tfidf");
