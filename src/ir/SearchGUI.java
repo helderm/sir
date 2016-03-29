@@ -172,7 +172,9 @@ public class SearchGUI extends JFrame {
 		    // we don't want to search at the same time we're indexing new files
 		    // (this might corrupt the index).
 		    synchronized ( indexLock ) {
-			results = indexer.index.search( query, queryType, rankingType, structureType ); 
+		    	long startTime = System.nanoTime();
+		    	results = indexer.index.search( query, queryType, rankingType, structureType ); 
+		    	System.out.println("Time taken for search: [" + ((System.nanoTime() - startTime)/1000000) + "] ms");
 		    }
 		    StringBuffer buf = new StringBuffer();
 		    
@@ -225,7 +227,9 @@ public class SearchGUI extends JFrame {
 			// synchronized since we don't want to search at the same time we're indexing new files
 			// (this might corrupt the index).
 			synchronized ( indexLock ) {
-			    results = indexer.index.search( query, Index.RELEVANCE_FEEDBACK_QUERY, rankingType, structureType );
+			    long startTime = System.nanoTime();
+				results = indexer.index.search( query, Index.RELEVANCE_FEEDBACK_QUERY, rankingType, structureType );
+		    	System.out.println("Time taken for search: [" + ((System.nanoTime() - startTime)/1000000) + "] ms");
 			}
 			buf.append( "\nSearch after relevance feedback:\n" );
 			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );

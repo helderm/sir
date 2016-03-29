@@ -196,7 +196,7 @@ public class Query {
 	    this.weights = newQueryWeights;	    
     }
     
-    public class TermPostings implements Comparable<TermPostings>{
+    public static class TermPostings implements Comparable<TermPostings>{
     	public String term;
     	public Double weight;
     	public PostingsList postings;
@@ -207,7 +207,7 @@ public class Query {
 		}
     }
     
-    private class TermWeight implements Comparable<TermWeight>{
+    private static class TermWeight implements Comparable<TermWeight>{
     	public String term;
     	public Double weight;
 		

@@ -42,6 +42,8 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 	private Double minScore = 99.0;
 	private Double maxScore = -1.0;
 
+	private static final Double QUERY_SCORE_MIN_THRESHOLD = 0.001;
+	
     public HashedIndex(MongoDatabase db, Corpus corpus, Options opt) {
     	if(opt.cacheSize >= 0){    		
     		this.cacheSize = opt.cacheSize;
@@ -192,7 +194,11 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		String term = query.terms.get(i);
     		Double weight = query.weights.get(i);
     		
-    		Query.TermPostings tp = query.new TermPostings();
+    		// idx elmination: ignore query terms with too low of a score
+    		if(weight < QUERY_SCORE_MIN_THRESHOLD)
+    			continue;
+    		
+    		Query.TermPostings tp = new Query.TermPostings();
     		tp.term = term;
     		tp.weight = weight;
     		tp.postings = getPostings(term);
@@ -230,7 +236,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		}
     	
     	case Index.RELEVANCE_FEEDBACK_QUERY:
-    		return cosineScore(termsPostings);    	
+    		return rankedQuery(termsPostings, 1.0, 0.0);    	
     	}  	
     	
     	return new PostingsList();
@@ -344,7 +350,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     
     public PostingsList rankedQuery(ArrayList<Query.TermPostings> query, Double tfidf, Double pagerank){
     	PostingsList answer = new PostingsList();
-    	
+    	    	
     	// for each query term
     	for(Query.TermPostings tp : query){
     		// for each doc in the postings lists
@@ -352,8 +358,12 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     			PostingsEntry ape = new PostingsEntry(pe);
     			CorpusDocument doc = this.corpus.getDocument(pe.docID);
     			
-    			Double score = (pe.score - getMinScore()) / (getMaxScore() - getMinScore());
-    			Double rank = (doc.rank - this.corpus.getMinRank()) / (this.corpus.getMaxRank() - this.corpus.getMinRank());
+    			Double score = 0.0;
+    			Double rank = 0.0;
+    			if(tfidf > 0.0)
+    				score = ((pe.score * tp.weight) - getMinScore()) / (getMaxScore() - getMinScore());
+    			if(pagerank > 0.0)
+    				rank = (doc.rank - this.corpus.getMinRank()) / (this.corpus.getMaxRank() - this.corpus.getMinRank());
     			
     			ape.score = (tfidf * score) + (pagerank * rank);
     			answer.add(ape);
