@@ -35,7 +35,7 @@ public class SearchGUI extends JFrame {
     LinkedList<String> dirNames = new LinkedList<String>();
 
     /**  The query type (either intersection, phrase, or ranked). */
-    int queryType = Index.INTERSECTION_QUERY;
+    int queryType = Index.RANKED_QUERY;
 
     /**  The index type (either entirely in memory or partly on disk). */
     int indexType = Index.HASHED_INDEX;
@@ -133,7 +133,7 @@ public class SearchGUI extends JFrame {
 	structure.add( unigramItem ); 
 	structure.add( bigramItem ); 
 	structure.add( subphraseItem ); 
-	intersectionItem.setSelected( true );
+	rankedItem.setSelected( true );
 	tfidfItem.setSelected( true );
 	unigramItem.setSelected( true );
 	p.add( menuBar );
@@ -171,17 +171,18 @@ public class SearchGUI extends JFrame {
 		    // Search and print results. Access to the index is synchronized since
 		    // we don't want to search at the same time we're indexing new files
 		    // (this might corrupt the index).
-		    synchronized ( indexLock ) {
-		    	long startTime = System.nanoTime();
+		    long startTime = System.nanoTime();
+		    long totalTime;
+		    synchronized ( indexLock ) {		    	
 		    	results = indexer.index.search( query, queryType, rankingType, structureType ); 
-		    	System.out.println("Time taken for search: [" + ((System.nanoTime() - startTime)/1000000) + "] ms");
+		    	totalTime = (System.nanoTime() - startTime)/1000000;		    	
 		    }
 		    StringBuffer buf = new StringBuffer();
 		    
 		    HashMap<String, String> docsInfo = indexer.corpus.getDocumentsNames(results);
 		    
 		    if ( results != null ) {
-			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );
+			buf.append( "\nFound " + results.size() + " matching document(s) in " + totalTime + "ms \n\n" );
 			for ( int i=0; i<results.size(); i++ ) {
 			    buf.append( " " + i + ". " );
 			    //String filename = indexer.index.docIDs.get( "" + results.get(i).docID );
@@ -226,13 +227,14 @@ public class SearchGUI extends JFrame {
 			// Perform a new search with the weighted and expanded query. Access to the index is 
 			// synchronized since we don't want to search at the same time we're indexing new files
 			// (this might corrupt the index).
-			synchronized ( indexLock ) {
-			    long startTime = System.nanoTime();
+			long startTime = System.nanoTime();
+			long totalTime;
+			synchronized ( indexLock ) {			    
 				results = indexer.index.search( query, Index.RELEVANCE_FEEDBACK_QUERY, rankingType, structureType );
-		    	System.out.println("Time taken for search: [" + ((System.nanoTime() - startTime)/1000000) + "] ms");
+		    	totalTime = (System.nanoTime() - startTime)/1000000;
 			}
 			buf.append( "\nSearch after relevance feedback:\n" );
-			buf.append( "\nFound " + results.size() + " matching document(s)\n\n" );
+			buf.append( "\nFound " + results.size() + " matching document(s) in " + totalTime + "ms \n\n" );
 			
 			HashMap<String, String> docsInfo = indexer.corpus.getDocumentsNames(results);
 			for ( int i=0; i<results.size(); i++ ) {

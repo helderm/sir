@@ -249,11 +249,13 @@ public class Indexer {
     	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
     	MongoCollection<CorpusDocument> docCol = this.db.getCollection("docs", CorpusDocument.class);
     	MongoCollection<Document> scCol = this.db.getCollection("scores");
+    	MongoCollection<Document> chCol = this.db.getCollection("champions");
     	
     	// clean the db
     	idxCol.drop();
     	docCol.drop();
     	scCol.drop();
+    	chCol.drop();
     	
     	// create indexes
     	idxCol.createIndex(new Document("term", 1));

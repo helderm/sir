@@ -43,6 +43,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
 	private Double maxScore = -1.0;
 
 	private static final Double QUERY_SCORE_MIN_THRESHOLD = 0.001;
+	private static final Integer CHAMPIONS_LIST_NUM_DOCS = 30;
 	
     public HashedIndex(MongoDatabase db, Corpus corpus, Options opt) {
     	if(opt.cacheSize >= 0){    		
@@ -161,11 +162,23 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	// try to fetch from db
 		try{
     		MongoCollection<IndexEntry> col = this.db.getCollection("index", IndexEntry.class);
-        	MongoCursor<IndexEntry> it = col.find(eq("term", token)).iterator();
+    		MongoCollection<IndexEntry> chCol = this.db.getCollection("champions", IndexEntry.class);
+    		IndexEntry ie;
+    		
+    		// try fetching first from the champions list
+    		ie = chCol.find(eq("term", token)).first();
+    		if(ie != null){
+    			System.out.println("Returning champions list for term ["+token+"]...");
+    			pl.add(ie.postings);
+    			this.cache.put(token, pl);
+    			return pl;
+    		}
+    		
+    		MongoCursor<IndexEntry> it = col.find(eq("term", token)).iterator();
         	
         	// add postings to every index entry until it is filled
         	while(it.hasNext()){
-        		IndexEntry ie = it.next();        		
+        		ie = it.next();        		
         		pl.add(ie.postings);
         	}
         	
@@ -374,28 +387,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	return answer;
     	
     }
-    
-    public PostingsList cosineScore(ArrayList<Query.TermPostings> query){
-    	PostingsList answer = new PostingsList();
-    	
-    	// for each query term
-    	for(Query.TermPostings tp : query){
-    		
-    		// for each doc in the postings lists
-    		for(PostingsEntry pe : tp.postings){
-    			PostingsEntry ape = new PostingsEntry(pe);
-    			
-    			Double score = pe.score * tp.weight;
-    			ape.score = score;
-    			answer.add(ape);
-    		}
-    	}
-    	
-    	Collections.sort(answer.getList(), PostingsEntry.SCORE_ORDER);      	
-    	
-    	return answer;
-    }
-    
+
 	/**
 	 * Calculate the TF-IDF scores for every term in the db
 	 */
@@ -413,7 +405,7 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	while(it.hasNext()){
     		IndexEntry ie = it.next();        		
     		
-    		// we may have same term in different docs, so we dont have to recalculate
+    		// we may have same term in different docs in mongodb, so we dont have to recalculate
     		//  it again for the terms that we already did it
     		if(updatedTerms.contains(ie.token))
     			continue;    		
@@ -441,6 +433,8 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     		}
     		
     		savePostings(ie.token, postings);
+    		saveChampionsList(ie.token, postings);
+    		
     		updatedTerms.add(ie.token);
     		
     		if(++counter % 1000 == 0)
@@ -455,6 +449,26 @@ public class HashedIndex implements Index, Iterable<Map.Entry<String, PostingsLi
     	scCol.insertOne(score);
 
 	}
+    
+    private void saveChampionsList(String term, PostingsList postings){
+    	if(postings.size() < CHAMPIONS_LIST_NUM_DOCS)
+    		return;
+    	
+    	MongoCollection<IndexEntry> col = this.db.getCollection("champions", IndexEntry.class); 
+    	
+    	// create a ordered copy of the postings list
+    	PostingsList champions = new PostingsList(postings.getList());
+    	Collections.sort(champions.getList(), PostingsEntry.SCORE_ORDER);
+    	
+    	// truncate
+    	champions = champions.get(0, CHAMPIONS_LIST_NUM_DOCS);
+    	
+    	IndexEntry ie = new IndexEntry();
+    	ie.token = term;
+    	ie.postings = champions;    	
+    	col.insertOne(ie);
+    	
+    }
     
 	public Double getMinScore(){
 		if(this.minScore < 99.0)

@@ -119,17 +119,20 @@ public class Corpus implements Iterable<Map.Entry<Integer, CorpusDocument>>{
 	public void savePageranks(ArrayList<CorpusDocument> docs) {
 		MongoCollection<CorpusDocument> col = this.db.getCollection("docs", CorpusDocument.class);
 		
+		Integer ignoredDocs = 0;		
 		for(CorpusDocument doc : docs){
 			// find a doc with the same name in the db
 			CorpusDocument dbDoc = col.find(eq("name", doc.name)).first();
 			if(dbDoc == null){
-				System.err.println("Couldnt find doc named ["+doc.name+"] in the db, ignoring it...");
+				ignoredDocs++;
 				continue;
 			}
 			
 			dbDoc.rank = doc.rank;
 			col.findOneAndReplace(eq("_id", dbDoc.id), dbDoc);
 		}
+		
+		System.err.println("["+ignoredDocs+"] docs were ignored during the pagerank saving!");
 		
 	}
 	
