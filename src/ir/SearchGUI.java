@@ -167,14 +167,14 @@ public class SearchGUI extends JFrame {
 		public void actionPerformed( ActionEvent e ) {
 		    // Normalize the search string and turn it into a Query
 		    String queryString = SimpleTokenizer.normalize( queryWindow.getText() );
-		    query = new Query( queryString, indexer);
+		    query = new Query( queryString, indexer, structureType);
 		    // Search and print results. Access to the index is synchronized since
 		    // we don't want to search at the same time we're indexing new files
 		    // (this might corrupt the index).
 		    long startTime = System.nanoTime();
 		    long totalTime;
 		    synchronized ( indexLock ) {		    	
-		    	results = indexer.index.search( query, queryType, rankingType, structureType ); 
+		    	results = indexer.search( query, queryType, rankingType, structureType ); 
 		    	totalTime = (System.nanoTime() - startTime)/1000000;		    	
 		    }
 		    StringBuffer buf = new StringBuffer();
@@ -230,7 +230,7 @@ public class SearchGUI extends JFrame {
 			long startTime = System.nanoTime();
 			long totalTime;
 			synchronized ( indexLock ) {			    
-				results = indexer.index.search( query, Index.RELEVANCE_FEEDBACK_QUERY, rankingType, structureType );
+				results = indexer.search( query, Index.RELEVANCE_FEEDBACK_QUERY, rankingType, structureType );
 		    	totalTime = (System.nanoTime() - startTime)/1000000;
 			}
 			buf.append( "\nSearch after relevance feedback:\n" );
@@ -262,7 +262,7 @@ public class SearchGUI extends JFrame {
 	Action saveAndQuit = new AbstractAction() {
 		public void actionPerformed( ActionEvent e ) {
 		    resultWindow.setText( "\n  Saving index..." );
-		    indexer.index.cleanup();
+		    indexer.cleanup();
 		    System.exit( 0 );
 		}
 	    };
@@ -397,6 +397,9 @@ public class SearchGUI extends JFrame {
 				i++;
 				this.opt.recreateIndex = true;
 				break;
+			case "-s":
+				i++;
+				this.opt.useSpeedup = true;
 			}
 		}
 		

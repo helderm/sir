@@ -6,7 +6,7 @@ import java.util.Map;
 public class LruCache<A, B> extends LinkedHashMap<A, B> {
     private final int maxEntries;
     
-    public static final Integer INFINITY = 999999;
+    public static final Integer INFINITY = 99999999;
 
     public LruCache(final int maxEntries) {
         super(maxEntries + 1, 1.0f, true);

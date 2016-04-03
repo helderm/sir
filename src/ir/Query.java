@@ -16,6 +16,7 @@ public class Query {
     
     public LinkedList<String> terms = new LinkedList<String>();
     public LinkedList<Double> weights = new LinkedList<Double>();
+    public String queryString;
 
     /**
      *  Creates a new empty Query 
@@ -31,31 +32,55 @@ public class Query {
 	while ( tok.hasMoreTokens() ) {
 	    terms.add( tok.nextToken() );
 	    weights.add( new Double(1) );
-	}    
+	}
+	
+	this.queryString = queryString;
     }
     
-    public Query( String queryString, Indexer indexer  ) {
+    public Query( String queryString, Indexer indexer, int structureType ) {
 		StringTokenizer tok = new StringTokenizer( queryString );
 		Double querySize = 0.0;
 		
-		while ( tok.hasMoreTokens() ) {
-		    terms.add( tok.nextToken() );
-		    weights.add( new Double(1) );
-		    querySize += 1.0;
-		}   
+		// parse the query as unigram or bigram
+		switch (structureType) {
+		case Index.BIGRAM:
+		case Index.SUBPHRASE:
+			String previous_token = null;
+			while ( tok.hasMoreTokens() ) {
+			    
+				if(previous_token == null){
+					previous_token = tok.nextToken();
+					continue;
+				}
+				
+				String current_token = tok.nextToken();	
+				terms.add( previous_token + " " + current_token );
+			    weights.add( new Double(1) );
+			    querySize += 1.0;
+			    previous_token = current_token;			    
+			}  
+			
+			break;
+		case Index.UNIGRAM:
+		default:
+			while ( tok.hasMoreTokens() ) {
+			    terms.add( tok.nextToken() );
+			    weights.add( new Double(1) );
+			    querySize += 1.0;
+			}   
+			break;
+		}
 		
 	    // recalculate the query weights as tf-idf scores
-	    LinkedList<String> newQueryTerms = new LinkedList<String>();
 	    LinkedList<Double> newQueryWeights = new LinkedList<Double>();
 	    
 	    int i;
 	    for(i=0; i<this.terms.size(); i++){
 	    	String term = this.terms.get(i);
 	    	Double tf = this.weights.get(i);
-	    	
-    		PostingsList postings = indexer.index.getPostings(term);
-	    		
-    		Double idf = indexer.corpus.idf(postings);
+
+	    	Integer df = indexer.getIndex(structureType).getDf(term);
+    		Double idf = indexer.corpus.idf(df);
     		
     		// set the new score for the query term
     		Double score = tf * idf;
@@ -65,6 +90,7 @@ public class Query {
     	}
 
 	    weights = newQueryWeights;
+	    this.queryString = queryString;
     }    
     
     /**
@@ -97,29 +123,17 @@ public class Query {
 	    int i = 0;
 		
 	    // get the size of the query as if it were a doc
-	    Double querySize = 0.0;
-	    for(Double w : this.weights)
-	    	querySize += w;
+	    Integer querySize = this.terms.size();
 	    
-	    // recalculate the query weights as tf-idf scores
 	    LinkedList<String> newQueryTerms = new LinkedList<String>();
 	    LinkedList<Double> newQueryWeights = new LinkedList<Double>();
 	    
-	    for(i=0; i<this.terms.size(); i++){
-	    	String term = this.terms.get(i);
-	    	Double tf = this.weights.get(i);
-	    	
-    		PostingsList postings = indexer.index.getPostings(term);
-	    		
-    		Double idf = indexer.corpus.idf(postings);
-    		
-    		// set the new score for the query term
-    		Double score = tf * idf;
-    		score = (score / Math.sqrt(querySize)) * alpha;    		
-    		
-    		newQueryTerms.add(term);
-    		newQueryWeights.add(score);
-    	}
+	    
+	     // recalculate the query weights as tf-idf scores
+	     for(i=0; i<this.terms.size(); i++){
+    		newQueryTerms.add(this.terms.get(i));
+    		newQueryWeights.add(this.weights.get(i));
+	     }
 	    
 	    // get the scores for every term in every relevant document
 	    int numRelevantDocs = 0;	    

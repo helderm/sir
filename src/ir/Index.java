@@ -16,6 +16,7 @@ public interface Index {
 
     /* Index types */
     public static final int HASHED_INDEX = 0;
+    public static final int BIWORD_INDEX = 1;
 
     /* Query types */
     public static final int INTERSECTION_QUERY = 0;
@@ -38,8 +39,12 @@ public interface Index {
    
     public void insert( String token, int docID, int offset );
     public Iterator<String> getDictionary();
-    public PostingsList getPostings( String token );
-    public PostingsList search( Query query, int queryType, int rankingType, int structureType );
+    public PostingsList getPostings( String token, boolean useChampions);
+    public PostingsList search( Query query, int queryType, int rankingType);
+    public void calculateScores();
+    public Integer getDf(String term);
+    public void save();
+    
     public void cleanup();
     
 }

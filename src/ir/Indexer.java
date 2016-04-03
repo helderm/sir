@@ -18,6 +18,7 @@ import java.io.StringReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -49,9 +50,12 @@ import java.util.concurrent.Future;
  */
 public class Indexer {
 
-    /** The index to be built up by this indexer. */
-    public Index index;
-    
+    private static final int SUBPHRASE_MIN_DOCs = 100;
+
+	/** The index to be built up by this indexer. */
+    //private Index index;
+    private HashMap<Integer, Index> indexes;
+
 	public Corpus corpus;
     
 	private MongoClient client;
@@ -59,6 +63,8 @@ public class Indexer {
 	private Options opt;
 
 	private ExecutorService worker;
+
+
 
     /* ----------------------------------------------- */
 
@@ -93,7 +99,14 @@ public class Indexer {
     	this.db = client.getDatabase("findr");	
     	this.opt = opt;
     	this.corpus = new Corpus(this.db, this.opt);
-    	this.index = new HashedIndex(this.db, this.corpus, this.opt);
+    	
+    	Index unindex = new HashedIndex(this.db, this.corpus, this.opt);
+    	Index bindex = new BiwordIndex(this.db, this.corpus, this.opt);
+    	
+    	this.indexes = new HashMap<>();
+    	this.indexes.put(Index.HASHED_INDEX, unindex);
+    	this.indexes.put(Index.BIWORD_INDEX, bindex);
+
     	this.worker = Executors.newFixedThreadPool(1);
     }
 
@@ -118,21 +131,35 @@ public class Indexer {
     	
     	// export the remaining index entries and docs info
 	    System.out.println("Exporting remaining index postings to db...");
-    	for(Map.Entry<String, PostingsList> map : (HashedIndex)this.index){
-	    	((HashedIndex)this.index).savePostings(map.getKey(), map.getValue());
+    	for(Map.Entry<Integer, Index> map : this.indexes.entrySet()){	    	
+    		//if(map.getKey() == Index.BIWORD_INDEX)
+    		//	continue;    		
+    		
+    		Index idx = map.getValue();
+	    	idx.save();
+	    	
     	} 
-	    this.index = new HashedIndex(this.db, this.corpus, this.opt);	    
-
-    	// calculate the tf-idf scores of every term-document pair
-	    System.out.println("Calculating scores...");
-   		((HashedIndex)this.index).calculateScores();
-
-   		// save all docs in the db
-    	this.corpus.saveDocuments();
     	
+    	// calculate the tf-idf scores of every term-document pair
+    	for(Map.Entry<Integer, Index> map : this.indexes.entrySet()){	
+    		//if(map.getKey() == Index.BIWORD_INDEX)
+    		//	continue;   
+    		
+    		String idxType = map.getKey()==Index.HASHED_INDEX?"Hashed Index":"Biword Index";
+    		System.out.println("Calculating scores for ["+ idxType +"]...");
+    		Index idx = map.getValue();
+    		idx.calculateScores();
+    		
+       		// save all docs in the db
+    		if(map.getKey()==Index.HASHED_INDEX){
+    			System.out.println("Saving documents...");
+    			this.corpus.saveDocuments();
+    		}
+    		
+    	}
    		
-    	Options opt = this.opt;
-    	opt.recreateIndex = false;
+    	//Options opt = this.opt;
+    	//opt.recreateIndex = false;
     	
     	// update the docs with their pageranks
     	try { 
@@ -142,7 +169,7 @@ public class Indexer {
 		} catch (Exception e) {
 			System.err.println("Pagerank failed!");
 			e.printStackTrace();
-		} 
+		}
     	
     }
 
@@ -172,6 +199,8 @@ public class Indexer {
 		doc.name = f.getPath().substring(idx1, idx2);
 		doc.rank = 0.0;
 		
+		System.out.println("- Parsing file [" + doc.name + "]");
+		
 		try {
 		    //  Read the first few bytes of the file to see if it is 
 		    // likely to be a PDF 
@@ -197,6 +226,7 @@ public class Indexer {
 		    int offset = 0;
 		    while ( tok.hasMoreTokens() ) {
 			String token = tok.nextToken();
+			
 			insertIntoIndex( doc.did, token, offset++ );
 		    }
 		    
@@ -241,24 +271,92 @@ public class Indexer {
      *  Indexes one token.
      */
     public void insertIntoIndex( int docID, String token, int offset ) {
-    	index.insert( token, docID, offset );
+    	
+    	// insert this token in all indexes
+    	for(Map.Entry<Integer, Index> map : this.indexes.entrySet()){
+    		//if(map.getKey() == Index.BIWORD_INDEX)
+    		//	continue;   
+    		
+    		Index idx = map.getValue();
+    		idx.insert( token, docID, offset );
+    	}
+    }
+    
+    /**
+     * Search wrapper method, will fwrd the call to the correct index
+     * @return
+     */
+    public PostingsList search(Query query, int queryType, int rankingType, int structureType){
+    	if(structureType == Index.SUBPHRASE){
+    		PostingsList res = new PostingsList();
+    		
+    		//do a 2-gram search, and if the returned num of docs is lesser
+    		// than a threshold, do a 1-gram search also
+    		Index idx = getIndex(Index.BIWORD_INDEX);
+   			res = idx.search(query, queryType, rankingType);
+    		
+    		if(res.size() < SUBPHRASE_MIN_DOCs){
+    			query = new Query(query.queryString, this, Index.UNIGRAM);
+    			idx = getIndex(Index.HASHED_INDEX);    			
+    			res.add(idx.search(query, queryType, rankingType));
+    			Collections.sort(res.getList(), PostingsEntry.SCORE_ORDER);
+    		}
+    		return res;
+    	}
+    	
+    	Index idx = getIndex(structureType);    	
+    	return idx.search(query, queryType, rankingType);
+    }
+    
+    public void cleanup(){
+    	for(Map.Entry<Integer, Index> map : this.indexes.entrySet()){
+    		Index idx = map.getValue();
+    		idx.cleanup();
+    	}
+    }
+    
+    public PostingsList getPostings(String term, int structureType, boolean useChampions){
+    	Index idx = getIndex(structureType);
+    	return idx.getPostings(term, useChampions);
+    }
+    
+    public Index getIndex(int structureType){
+    	Index idx;
+    	
+    	switch (structureType) {
+		case Index.BIGRAM:
+		case Index.SUBPHRASE:
+			idx = this.indexes.get(Index.BIWORD_INDEX);
+			break;
+
+		case Index.UNIGRAM:
+		default:
+			idx = this.indexes.get(Index.HASHED_INDEX);
+			break;
+		}
+    	
+    	return idx;
     }
     
     public void recreateDB(){
     	
     	MongoCollection<IndexEntry> idxCol = this.db.getCollection("index", IndexEntry.class);
+    	MongoCollection<IndexEntry> bidxCol = this.db.getCollection("bindex", IndexEntry.class);
     	MongoCollection<CorpusDocument> docCol = this.db.getCollection("docs", CorpusDocument.class);
     	MongoCollection<Document> scCol = this.db.getCollection("scores");
     	MongoCollection<Document> chCol = this.db.getCollection("champions");
     	
     	// clean the db
     	idxCol.drop();
+    	bidxCol.drop();
+    	
     	docCol.drop();
     	scCol.drop();
     	chCol.drop();
     	
     	// create indexes
     	idxCol.createIndex(new Document("term", 1));
+    	bidxCol.createIndex(new Document("term", 1));
     	docCol.createIndex(new Document("did", 1));    	
     }
 }

@@ -105,10 +105,17 @@ public class Corpus implements Iterable<Map.Entry<Integer, CorpusDocument>>{
 	}
   
     public Double idf(PostingsList postings){
+    	return idf(postings.size());
+    }
+
+    public Double idf(Integer df){
     	Long corpusSize = this.getSize();
-    	Integer docFrequency = postings.size();
     	
-    	Double idf = Math.log10(corpusSize / docFrequency);
+    	// if the term doesnt exist, just assume idf is 1
+    	if(df == 0)
+    		return 1.0;
+    	
+    	Double idf = Math.log10(corpusSize / (float)df);
     	return idf;
     }
     
